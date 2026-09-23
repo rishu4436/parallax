@@ -1,0 +1,13 @@
+node_modules
+parallaxagent/.studio
+parallaxagent/**/.venv
+.next
+dist
+.turbo
+.env
+.env.local
+.data
+*.log
+tsconfig.tsbuildinfo
+.vercel
+docs/live-errors

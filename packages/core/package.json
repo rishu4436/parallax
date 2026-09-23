@@ -1,0 +1,13 @@
+{
+  "name": "@parallax/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./persist": "./src/persist.ts"
+  },
+  "dependencies": {
+    "@parallax/config": "workspace:*"
+  }
+}

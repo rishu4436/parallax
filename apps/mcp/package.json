@@ -1,0 +1,16 @@
+{
+  "name": "@parallax/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.1",
+    "@parallax/config": "workspace:*",
+    "@parallax/core": "workspace:*",
+    "@parallax/web3": "workspace:*",
+    "zod": "^3.25.76"
+  }
+}

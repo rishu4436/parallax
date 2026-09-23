@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+html[data-session="open"] {
+  --bg: #07080a;
+  --raised: #0c0e12;
+  --line: #1c2028;
+  --text: #f4f1ea;
+  --dim: #8b909a;
+  --gold: #f0b90b;
+  --gold-dim: #c9a227;
+  --up: #3ddc97;
+  --down: #e85d6c;
+  --fog: none;
+  --plate: rgba(244, 241, 234, 0.035);
+  color-scheme: dark;
+}
+
+html[data-session="closed"] {
+  --fog: radial-gradient(70% 90% at 18% 0%, rgba(240, 185, 11, 0.2), transparent 58%);
+  --plate: rgba(240, 185, 11, 0.045);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  background-image:
+    linear-gradient(to right, var(--plate) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--plate) 1px, transparent 1px);
+  background-size: 72px 72px;
+  background-position: -1px -1px;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: rgba(240, 185, 11, 0.28);
+  color: #f4f1ea;
+}
+
+.num {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.display {
+  font-family: var(--font-display), "Times New Roman", serif;
+  font-weight: 400;
+  letter-spacing: -0.03em;
+}
+
+.kicker {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.fog-target {
+  background-image: var(--fog);
+}
+
+.hair {
+  border-color: var(--line);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2e38;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

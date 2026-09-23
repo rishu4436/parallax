@@ -1,0 +1,14 @@
+{
+  "name": "@parallax/web3",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@parallax/config": "workspace:*",
+    "@parallax/core": "workspace:*",
+    "viem": "^2.37.6"
+  }
+}

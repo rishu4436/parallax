@@ -1,0 +1,14 @@
+{
+  "name": "@parallax/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@parallax/config": "workspace:*",
+    "@parallax/core": "workspace:*",
+    "@parallax/web3": "workspace:*"
+  }
+}

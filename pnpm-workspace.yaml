@@ -1,0 +1,9 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+allowBuilds:
+  bufferutil: true
+  esbuild: true
+  keccak: true
+  utf-8-validate: true

@@ -1,0 +1,410 @@
+# PARALLAX — complete build spec for Grok Build
+# BNB Hack: Tokenized Stocks Edition
+# Live BNB Smart Chain mainnet only. ZERO demo mode.
+
+You are building PARALLAX, a production web app + agent + MCP server.
+Read this entire spec before writing files. Then implement in the order at the bottom.
+Do not invent a different product. Do not rename. Do not add testnet, mock data, fixture portfolios, fake hashes, paper trading, or a DEMO switch. If the API errors, render the error.
+
+────────────────────────────────────────
+0. WHAT YOU ARE BUILDING (plain language)
+────────────────────────────────────────
+PARALLAX is a one-page immersive trading surface for TOKENIZED US STOCKS on BNB Chain.
+
+A normal stock market closes \~16:00 New York time. Tokenized versions of the same names keep trading on-chain as BEP-20 tokens from three different issuers:
+
+  • bStocks   suffix B     e.g. NVDAB    type=3   mixed SWAP (LiquidMesh) + RFQ (PcsXRfq)
+  • Ondo      suffix on    e.g. NVDAon   type=1   RFQ only (InchFusion + CowSwap + PcsXRfq)
+  • xStocks   suffix x     e.g. NVDAx    type=2   AMM SWAP like a normal token
+
+These three tokens are NOT fungible. Same company, three contracts, three prices, three hour-rules.
+Binance Web3 Trading API is the single aggregation layer. Quotes die in 30 seconds.
+Ondo off US hours often returns error 40367. bStock off hours often returns 40369. xStocks pools may stay live.
+
+PARALLAX:
+  1. Maps “NVIDIA” / “NVDA” to every wrapper that exists on BSC.
+  2. Quotes all of them live.
+  3. Shows the PARALLAX: onchain price minus Friday 16:00 ET cash close (and vs the other wrappers).
+  4. Routes a real spot buy/sell on the best OPEN rail (or the rail the user locked).
+  5. Preflights SWAP txs with the Transaction Simulate API, then the user signs in Binance Web3 Wallet.
+  6. Runs RFQ when the quote says executionMode=RFQ (EIP-712 → /order/submit → poll).
+  7. Keeps an always-on agent (BNB Agent Studio + x402) for DCA / earnings flatten / weekend cap.
+  8. Exposes the same router as MCP tools so Agent Studio / Claude / other agents can call it.
+
+Judges open the deployed URL, connect a wallet, buy about $10 of a live name, see a BscScan hash.
+Spot only. No perps. No new token. Fills land in the user’s wallet.
+
+Tagline: Cash freezes. BNB doesn’t. Trade the gap.
+
+────────────────────────────────────────
+1. BRAND
+────────────────────────────────────────
+Name: PARALLAX
+Wordmark: PARALLAX
+Do not use AFTERBELL, YELLO, DESK, or BNB in the wordmark.
+Color:
+  bg            #07080A
+  raised        #0E1014
+  line          #1A1D24
+  text          #F4F1EA
+  dim           #8B909A
+  gold          #F0B90B     (BNB gold — used as THE accent, this is how BNB is felt)
+  goldDim       #C9A227
+  up            #3DDC97
+  down          #E85D6C
+  closed        #8B909A
+Type: Geist or Inter. Tabular lining figures on every price, %, countdown.
+Atmosphere (required):
+  Session OPEN  → cool steel chrome, gold only on CTAs
+  Session CLOSED / weekend → warm gold fog on topbar session chip, hero gap number, weekend dock
+  Implement as a data attribute on <html data-session="open|closed"> and CSS variables.
+Motion: 150ms. No coins exploding. No 3D. prefers-reduced-motion = instant.
+
+────────────────────────────────────────
+2. ONE CANVAS — IMMERSIVE HOME (the only screen)
+────────────────────────────────────────
+There is NO second dashboard. Weekend is a dock. Settings is a slide-over. Confirm is a focus takeover.
+
+TOP BAR (64px)
+  left: gold mark + PARALLAX
+  center: command field. Placeholder “Name, ticker, or ‘buy 25 NVDA’”. Cmd/Ctrl+K focuses it.
+  right: wallet chip (short address · BSC) · session chip (“US cash open” or “US cash closed · 18h 12m to 09:30 ET”) · local clock
+
+LEFT RAIL (56px icons)
+  Home (current) · Tape (smooth-scroll to tape) · Settings (slide-over)
+
+HERO STAGE (left \~58% of remaining width)
+  Underlying: NVIDIA
+  Pills: NVDAB · NVDAon · NVDAx  (only pills that exist in registry; disabled look if address missing)
+  Giant mark: live best mid you can show, e.g. $178.42
+  Subline: +1.24% vs Friday cash close $176.24     ← this % IS the parallax
+  Tiny: vs NVDAon +0.08% · vs NVDAx −0.26%
+
+  VENUE STACK (the product)
+  Three rows, same card:
+    row icon + issuer name + symbol
+    mid price or “—”
+    badge executionMode: RFQ / SWAP / AMM / RFQ+SWAP
+    badge OPEN | CLOSED | HALTED
+    slip $50 / $500
+    live/offline dot
+    if error: “40367 US hours” in down-color, not a toast only
+  The winning OPEN row gets a 1px gold outline and a label
+    BEST EXECUTABLE → NVDAB · LiquidMesh · you receive \~0.140 NVDAB
+  Primary gold button BUY   ghost SELL
+  Under stack: sparse 24h sparkline of the selected rail, axis unlabeled except “vs Friday close” reference line if you have that print.
+
+RIGHT DOCKS (\~42%)
+  PORTFOLIO
+    Total USD est.
+    List each held wrapper with rail letter B / on / x, qty, USD, unrealized vs cost if known
+    Stables + BNB gas line
+  WEEKEND / GAP  (always visible; copy changes with session)
+    “Cash dark 62:14” when closed, or “Cash live · gap compressed” when open
+    “2 of 3 holdings tradable”
+    “Median gap vs Friday +1.8%”
+    3 short sentences from weekendBrief()
+    Gold outline button: Queue $15 on best OPEN rail if gap > 1% at next cash open
+
+BOTTOM SPLIT
+  STRATEGIES
+    Studio worker: live | stopped
+    x402: funded | low
+    Jobs: name, cadence, last action, pause
+    “New job” opens a structured form (not a blank prompt box): type select + fields
+  TAPE
+    time · side · symbol · rail · usd · status · 0xhash→bscscan
+    failures remain (e.g. Failed 40367)
+    newest first, max \~30 rows in view
+
+SETTINGS SLIDE-OVER
+  order cap USDT (default 25)
+  daily cap USDT (default 100)
+  allowed rails checkboxes
+  kill switch (pauses agent + blocks new sends)
+  disclaimer: not advice; tokens ≠ shares; no voting; dividends rebase
+
+CONFIRM TAKEOVER (not a tiny modal)
+  Dim the canvas.
+  Center sheet:
+    You are buying NVIDIA exposure
+    Rail locked: NVDAB · bStocks · SWAP
+    Spend 10.00 USDT
+    Simulate: +0.140 NVDAB · −10.00 USDT · gas \~0.0004 BNB · SUCCESS
+    Quote dies in 00:24 (ring). At 00:00 buttons become REQUOTE only.
+    SIGN   REQUOTE   CANCEL
+  If simulate FAILED (e.g. ERC20InsufficientBalance): SIGN disabled, reason in plain English.
+  If executionMode RFQ: show “RFQ · you sign typed data · we submit · we poll”. No fake simulate numbers; show quoted out + TTL.
+
+COMMAND PALETTE RESULTS
+  Tickers from registry
+  Actions parsed: buy|sell <usd> <ticker>  → opens confirm with that intent after live quote
+  “portfolio” “weekend” “settings” jump docks
+
+────────────────────────────────────────
+3. DOMAIN MODEL (packages/core)
+────────────────────────────────────────
+type Rail = "bStock" | "ondo" | "xStock"
+type ExecMode = "SWAP" | "RFQ"
+type Session = "pre" | "regular" | "post" | "overnight" | "weekend" | "holiday"
+
+interface Wrapper {
+  rail: Rail
+  type: 1 | 2 | 3          // ondo=1 xStock=2 bStock=3
+  symbol: string           // NVDAB
+  address: `0x${string}`   // BSC
+  decimals: number
+}
+
+interface Underlying {
+  ticker: string           // NVDA
+  name: string
+  wrappers: Partial<Record<Rail, Wrapper>>
+}
+
+interface VenueQuote {
+  wrapper: Wrapper
+  ok: boolean
+  errorCode?: number       // 40367 40369 40401 QUOTE_EXPIRED etc
+  errorText?: string
+  executionMode?: ExecMode
+  vendorName?: string
+  quoteId?: string
+  quoteExpiresAt: number   // Date.now()+30000 from receipt
+  inAmount: string
+  outAmount: string
+  mid: number
+  slipBps50: number
+  slipBps500: number
+  raw: unknown             // keep raw API body for DEVEX
+}
+
+interface Intent {
+  ticker: string
+  side: "buy" | "sell"
+  usdt: string
+  railLock?: Rail          // if set, no hop after confirm
+  wallet: `0x${string}`
+}
+
+Router states (explicit enum, one store):
+  idle resolving quoting selecting building simulating
+  awaiting_signature submitting polling
+  filled failed expired rail_closed
+
+────────────────────────────────────────
+4. REGISTRY (do this before UI)
+────────────────────────────────────────
+Seed BSC mainnet wrappers you can verify. Minimum underlyings:
+NVDA TSLA AAPL AMZN MSFT META GOOGL AMD QQQ SPY CRCL
+For each, fill whichever rails actually exist. Do not invent addresses.
+Quote tokens (BSC):
+  USDT  0x55d398326f99059fF775485246999027B3197955
+  USDC  0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d
+  (USD1 / BNB as docs specify; native BNB = 0xeeee... or the address the Trading API expects — check live docs)
+
+Resolve “nvidia”, “NVDA”, “NVDAB” → same Underlying.
+
+────────────────────────────────────────
+5. SESSION ENGINE
+────────────────────────────────────────
+Use America/New_York.
+Regular 09:30–16:00 ET Mon–Fri excluding US equity holidays (embed 2026 NYSE holiday list).
+Drive: data-session, session chip countdown to next 09:30 ET, weekend dock copy, atmosphere.
+API is still boss: a quote success means that RAIL is OPEN even if calendar says closed.
+
+Friday cash close print:
+  Job that, when NY clock hits Fri 16:00 ET (or first run after), stores official close per ticker if you have a source.
+  If no source, UI text “Friday ref unavailable” and hide the giant % rather than faking 0.
+
+────────────────────────────────────────
+6. BINANCE WEB3 API (packages/web3)
+────────────────────────────────────────
+Docs to follow exactly:
+  https://web3.binance.com/en/dev-docs/products/trading-api/introduction
+  https://web3.binance.com/en/dev-docs/products/trading-api/integration-flow
+  https://web3.binance.com/en/dev-docs/products/transaction-api/introduction
+  https://developers.binance.com/en/docs/products/agentic-wallet/use-cases/trading/stock-trading
+
+Trading (binanceChainId="56"):
+  GET  /api/v1/dex/aggregator/quote
+  GET  /api/v1/dex/aggregator/swap
+  GET  /api/v1/dex/aggregator/quote-and-swap
+  GET  /api/v1/dex/aggregator/approve-transaction
+  GET  /api/v1/dex/aggregator/history
+  POST /api/v1/dex/aggregator/order/submit
+  GET  /api/v1/dex/aggregator/order/{orderId}
+
+Transaction:
+  GET  /api/v1/dex/pre-transaction/gas-price
+  GET  /api/v1/dex/pre-transaction/block-height
+  POST /api/v1/dex/pre-transaction/gas-limit
+  POST /api/v1/dex/pre-transaction/simulate
+  POST /api/v1/dex/pre-transaction/broadcast-transaction
+  GET  /api/v1/dex/post-transaction/orders
+
+Rules from docs you MUST implement:
+  • userWalletAddress required on /quote for RFQ routes (Ondo always; bStock RFQ).
+  • quoteId \~30s. After that 40401 QUOTE_EXPIRED. New quote, never reuse.
+  • /swap params must match the cached quote.
+  • slippagePercent OR autoSlippage=true required on /swap.
+  • SWAP: sign data.tx, simulate evmTx, broadcast signed tx.
+  • RFQ: sign rfq.typedDataToSign EIP-712, POST /order/submit { order, requestId }, poll until FILLED|FAILED.
+  • requestId UUID. Retry = SAME uuid. New uuid = new order.
+  • Signer address MUST equal userWalletAddress.
+  • approve-transaction for equity needs vendor = vendorName from quote.
+  • Trading + Transaction APIs never hold the key. You only relay signed payloads.
+
+Auth: implement whatever the current Web3 API intro requires (API key headers). Env WEB3_API_KEY, WEB3_API_BASE.
+
+────────────────────────────────────────
+7. EXECUTION PATH (only path)
+────────────────────────────────────────
+intent
+ → resolve Underlying
+ → in parallel quote every wrapper that exists (and USDT or chosen stable)
+ → drop failed rails into the row as CLOSED/error
+ → score OPEN rails by expectedOut after gas, minus slip penalty
+ → BEST EXECUTABLE label
+ → user hits BUY
+ → lock rail + quoteId
+ → if allowance low: build approve tx → user signs → broadcast → wait
+ → GET /swap (if quote still young) else requote same rail
+ → SWAP:
+      POST simulate with the unsigned evmTx
+      if SUCCESS show balanceChanges
+      user signs
+      POST broadcast-transaction
+      poll history + post-transaction/orders
+ → RFQ:
+      user signs typed data
+      POST order/submit
+      poll /order/{id}
+ → persist Tape row from CHAIN / order status, not from the quote
+ → if user confirmed NVDAB, do not silently fill NVDAx
+
+Caps: reject build if usdt > order cap or daily cap. Kill switch rejects build.
+
+────────────────────────────────────────
+8. AGENT (apps/agent)
+────────────────────────────────────────
+BNB Agent Studio TypeScript worker.
+Identity ERC-8004. Runtime self-fund via x402 as in Studio docs.
+The model may write a Job JSON. Code executes the job. No model-signed txs.
+
+Job types:
+  dca:              tickers[], usdtEach, cron, rail: "best"|Rail
+  flatten_earnings: ticker, cutPctBeforePrint, dipPct, usdtAdd, flattenAfterHours
+  weekend_cap:      maxUsdt, gapPct, mode: "trade_if_open"|"queue_for_cash_open"
+
+Each tick: read session + quotes → maybe emit Intent → same router as the UI.
+Pause / kill from Settings.
+
+────────────────────────────────────────
+9. MCP (apps/mcp)
+────────────────────────────────────────
+Tools (no sign):
+  parallax_resolve(q)
+  parallax_quote(ticker, usdt, wallet)
+  parallax_best(ticker, usdt, wallet)
+  parallax_simulate(intent)
+  parallax_status(id)
+  parallax_portfolio(wallet)
+  parallax_weekend_brief(wallet)
+Same packages/core + packages/web3. Do not fork logic.
+
+────────────────────────────────────────
+10. STACK + TREE
+────────────────────────────────────────
+TypeScript. pnpm. Next.js App Router. Tailwind. shadcn. viem. wagmi. Binance Web3 Wallet connector.
+
+parallax/
+  apps/web/app/page.tsx              ← THE canvas
+  apps/web/app/api/**                ← server proxy so keys stay server-side
+  apps/web/components/top-bar.tsx
+  apps/web/components/command.tsx
+  apps/web/components/hero.tsx
+  apps/web/components/venue-stack.tsx
+  apps/web/components/portfolio-dock.tsx
+  apps/web/components/weekend-dock.tsx
+  apps/web/components/strategies-dock.tsx
+  apps/web/components/tape.tsx
+  apps/web/components/confirm-takeover.tsx
+  apps/web/components/settings-sheet.tsx
+  apps/agent/
+  apps/mcp/
+  packages/core/src/registry.ts
+  packages/core/src/session.ts
+  packages/core/src/router.ts
+  packages/core/src/types.ts
+  packages/web3/src/trading.ts
+  packages/web3/src/transaction.ts
+  packages/config/src/env.ts
+  scripts/quote-nvda.ts              ← FIRST deliverable
+  docs/DEVEX.md
+  .env.example
+  README.md
+
+.env.example:
+  WEB3_API_KEY=
+  WEB3_API_BASE=
+  NEXT_PUBLIC_CHAIN_ID=56
+  DEFAULT_ORDER_CAP_USDT=25
+  DEFAULT_DAILY_CAP_USDT=100
+  # agent / x402 per Studio docs
+
+README: install, get free Web3 API access (Binance account or wallet, hackathon), fund USDT+BNB on BSC, pnpm dev, how to run agent + mcp, eligibility note (US/UK and listed regions cannot enter the hack), not investment advice.
+
+────────────────────────────────────────
+11. COPY
+────────────────────────────────────────
+Empty search: “Name a company. We will price every BNB wrapper.”
+All rails closed: “Cash hours bind this name right now. We will not invent a price.”
+Quote expired: “That price is 30 seconds old. Requote.”
+Kill switch: “PARALLAX is paused. No sends.”
+First-run no wallet: “Connect Binance Web3 Wallet. You will sign. We never hold keys.”
+
+────────────────────────────────────────
+12. MAINNET ACCEPTANCE (you must run these)
+────────────────────────────────────────
+1. scripts/quote-nvda.ts prints a table of live rails or live error codes. No hardcoded prices.
+2. Home shows those same numbers.
+3. Atmosphere flips when you force session closed in the session engine (unit test) AND when real NY time is outside regular.
+4. SWAP buy ≤ $15 and sell ≤ $15, hash on Tape + BscScan.
+5. RFQ dust when hours allow, or 40367/40369 rendered on the row.
+6. Simulate fail → SIGN off.
+7. Wait 31s on confirm → only REQUOTE works.
+8. Confirm NVDAB does not fill NVDAx.
+9. Friday ref missing → “Friday ref unavailable”, no fake %.
+10. Create and pause a DCA job in the UI.
+11. MCP parallax_quote matches the page.
+12. Chrome + Binance Web3 Wallet can complete a $10 buy on the deployed app.
+
+────────────────────────────────────────
+13. DEVEX.md (write as you hit walls)
+────────────────────────────────────────
+Time to first successful /quote.
+Doc URL that was wrong or incomplete.
+Full error bodies for 40367 40369 40401 and RFQ failures.
+SWAP vs RFQ steps that wasted time.
+Suffix mixups.
+Latency of quote+swap+simulate.
+Slip for $15 vs $500 after hours.
+What you would change in the developer platform. Specific. No fluff. This is 25% of judging.
+
+────────────────────────────────────────
+14. WORK ORDER (do not skip 1)
+────────────────────────────────────────
+1. Repo + env + packages/web3 + registry + session + scripts/quote-nvda.ts against MAINNET
+2. Only after that script prints live data: apps/web canvas, wired to /api that calls the same client
+3. Confirm takeover + approve + simulate + wagmi sign + broadcast/RFQ + Tape
+4. Portfolio balances from Wallet/balance APIs
+5. Weekend dock + Friday snapshot job
+6. Agent worker + Strategies dock
+7. MCP
+8. Atmosphere, caps, kill switch, empty/closed/expired polish
+9. DEVEX.md + deploy
+
+Forbidden: other names, second dashboard, testnet toggle, mock adapter, sample fills, token launch, points, leaderboards, perps, new ERC-20.
+
+Start NOW with scripts/quote-nvda.ts talking to BSC mainnet. Print the table. Then build PARALLAX around those numbers.
