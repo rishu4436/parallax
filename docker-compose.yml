@@ -1,0 +1,18 @@
+services:
+  parallax:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      PORT: "3000"
+      PARALLAX_DATA_DIR: /var/lib/parallax
+    volumes:
+      - parallax-data:/var/lib/parallax
+      - baw-home:/root
+    restart: unless-stopped
+
+volumes:
+  parallax-data:
+  baw-home:

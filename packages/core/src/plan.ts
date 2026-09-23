@@ -40,7 +40,7 @@ export function strategyPlan(input: {
   }
   steps.push({
     title: "You sign",
-    detail: "The worker only queues a signature. It does not send the trade.",
+    detail: "If the Agentic Wallet session is signed in on this machine, the worker sends the clip. Otherwise it waits under To sign.",
     state: "later",
   });
   const now = steps.filter((step) => step.state === "now").length;

@@ -1,0 +1,10 @@
+node_modules
+**/.next
+.data
+.git
+.env
+.env.local
+parallaxagent/.studio
+**/.venv
+*.log
+docs/live-errors

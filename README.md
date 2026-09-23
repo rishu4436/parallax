@@ -45,6 +45,28 @@ Caps default to 25 USDT per order and 100 USDT per New York day. The kill switch
 
 Jobs the desk worker will queue, and the live advice the Strategies dock and Studio agent read, are in [docs/STRATEGIES.md](docs/STRATEGIES.md). Session DCA, index core, cheap rail, weekend discovery, Friday discount, cash-open window, and flatten earnings all stop at an unsigned intent.
 
+## Always-on desk
+
+Vercel can serve the page. It cannot keep the worker or the Agentic Wallet login. Run both on one machine that stays on. Jobs and the tape go in `PARALLAX_DATA_DIR`. The `baw` session stays in that machine's home directory.
+
+```bash
+cp .env.example .env
+# fill WEB3_API_KEY and WEB3_API_SECRET
+docker compose up -d --build
+docker compose exec parallax baw auth signin
+docker compose exec parallax baw auth status
+```
+
+The site is on port 3000. Sign in to Agentic Wallet once in that container. After that, the login and the job files survive a restart. A job inside the agent caps is sent from that session. If the session is signed out, the same job waits under To sign.
+
+Without Docker, from this repo, after `pnpm install` and `pnpm build`:
+
+```bash
+pnpm desk
+```
+
+That starts the site and `pnpm agent` together. Stop it with Ctrl+C.
+
 ## Agent Studio
 
 The hackathon agent is the Studio project in `parallaxagent/`, scaffolded with `@bnbagent/studio-cli@0.0.14` on **bsc-mainnet**. Faces are A2A, MCP, and X402. Commerce is ERC-8183 plus B402. The seller price is free. Delivery calls the PARALLAX desk (`PARALLAX_BASE`, default `http://127.0.0.1:3020`) and returns the live rail table. Signing stays in `app/agent/src/signing.ts`. The model does not sign.

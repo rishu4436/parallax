@@ -15,9 +15,10 @@ import {
   RouterReject,
   snapshotRails,
 } from "@parallax/core";
-import { pushQueue, readJobs, readQueue, readSettings, spentTodayUsdt, writeBeat, writeFriday, writeJobs } from "@parallax/core/persist";
+import { pushQueue, readJobs, readQueue, readSettings, spentTodayUsdt, upsertTape, writeBeat, writeFriday, writeJobs } from "@parallax/core/persist";
 import { quoteIntent } from "@parallax/web3";
 import { randomUUID } from "node:crypto";
+import { agentWallet, pendingOrderId, pollOrder, sendAgentSwap, tokenQtyFromNotional } from "./execute";
 
 async function x402Status(): Promise<{ x402: "funded" | "low"; detail: string }> {
   const env = readEnv();
@@ -32,9 +33,22 @@ async function x402Status(): Promise<{ x402: "funded" | "low"; detail: string }>
   }
 }
 
+let ticking = false;
+
 async function tick() {
+  if (ticking) return;
+  ticking = true;
+  try {
+    await runTick();
+  } finally {
+    ticking = false;
+  }
+}
+
+async function runTick() {
   const env = readEnv();
   const settings = readSettings();
+  const agent = await agentWallet();
   const pay = await x402Status();
   const identity = env.agentId || "unset";
   if (settings.killSwitch) {
@@ -48,6 +62,21 @@ async function tick() {
   const jobs = readJobs();
   let changed = false;
   for (const job of jobs) {
+    if (job.lastAction?.includes("still processing")) {
+      const pending = pendingOrderId(job.lastAction);
+      if (pending) {
+        try {
+          const settled = await pollOrder(pending);
+          job.lastAction = settled.note;
+          job.lastAt = settled.done ? now.getTime() : nextLastAt(now.getTime(), job.cron, 20_000);
+        } catch (err) {
+          job.lastAction = err instanceof Error ? err.message : String(err);
+          job.lastAt = nextLastAt(now.getTime(), job.cron, 20_000);
+        }
+        changed = true;
+        continue;
+      }
+    }
     if (!jobDue(job, now.getTime())) continue;
     const notes: string[] = [];
     let retryMs: number | null = null;
@@ -59,7 +88,7 @@ async function tick() {
             ticker,
             side: "buy",
             usdt: jobQuoteUsdt(job),
-            wallet: env.quoteWallet,
+            wallet: agent ?? env.quoteWallet,
             railLock: jobRailLock(job),
           },
           { slip: job.type === "cheap_rail" || job.type === "gap_fade" || job.type === "open_print", allowed: settings.allowedRails },
@@ -74,7 +103,7 @@ async function tick() {
           session,
           gapPct: gapPrior ?? gapFriday,
           railOpen: Boolean(bestQuote?.ok),
-          wallet: env.quoteWallet,
+          wallet: agent ?? env.quoteWallet,
           ticker,
           lastAction: job.lastAction,
           rails,
@@ -100,7 +129,45 @@ async function tick() {
             retryMs = 120_000;
             continue;
           }
-          assertBuildAllowed({ ...intent, actor: "agent" }, settings, spentTodayUsdt(now));
+          assertBuildAllowed({ ...intent, actor: "agent", wallet: agent ?? intent.wallet }, settings, spentTodayUsdt(now));
+          const rail = intent.railLock || book.best?.wrapper.rail;
+          const row = book.books.find((item) => item.wrapper.rail === rail) || book.best;
+          if (agent && row?.wrapper.address) {
+            try {
+              const sent = await sendAgentSwap({
+                side: intent.side,
+                usdt: intent.usdt,
+                token: row.wrapper.address,
+                tokenQty: intent.side === "sell" ? tokenQtyFromNotional(intent.usdt, row.best?.perShare) || undefined : undefined,
+              });
+              notes.push(sent.note);
+              if (sent.txHash || sent.note.includes("failed")) {
+                upsertTape({
+                  id: sent.orderId || randomUUID(),
+                  at: now.getTime(),
+                  side: intent.side,
+                  ticker: intent.ticker,
+                  symbol: row.wrapper.symbol,
+                  rail: row.wrapper.rail,
+                  usd: intent.usdt,
+                  status: sent.note.includes("failed") ? "failed" : "filled",
+                  txHash: sent.txHash,
+                  orderId: sent.orderId,
+                  vendorName: row.best?.vendorName,
+                  source: "agent",
+                });
+              }
+              if (sent.done) queuedAny = true;
+              if (sent.pending) retryMs = 20_000;
+              console.log(sent.note);
+              continue;
+            } catch (err) {
+              notes.push(err instanceof Error ? err.message : String(err));
+              retryMs = 120_000;
+              console.log(notes[notes.length - 1]);
+              continue;
+            }
+          }
           pushQueue({
             id: randomUUID(),
             at: now.getTime(),
@@ -139,6 +206,6 @@ async function tick() {
   }
 }
 
-console.log("PARALLAX desk worker. No key is held. Jobs stop at the signature.");
+console.log("PARALLAX desk worker. A signed-in Agentic Wallet sends the clip. Otherwise it waits for SIGN.");
 void tick();
 setInterval(() => void tick(), 20_000);

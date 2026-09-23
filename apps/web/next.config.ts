@@ -7,6 +7,7 @@ loadEnv({ path: path.resolve(__dirname, "../../.env") });
 const require = createRequire(import.meta.url);
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: path.join(__dirname, "../.."),
   transpilePackages: ["@parallax/core", "@parallax/web3", "@parallax/config"],
   env: {
     NEXT_PUBLIC_CHAIN_ID: "56",
