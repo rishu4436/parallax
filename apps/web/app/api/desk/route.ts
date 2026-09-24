@@ -1,18 +1,21 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { readEnv } from "@parallax/config";
-import { cashSession, fetchCashPrints, fridayPrintFromCash, weekendBrief, type HoldingGap } from "@parallax/core";
+import { cashSession, fetchCashPrints, fridayPrintFromCash, getUnderlying, weekendBrief, wrapperList, type HoldingGap } from "@parallax/core";
 import {
+  readArmed,
   readBeat,
+  readFills,
   readFriday,
   readJobs,
   readQueue,
   readSettings,
   readTape,
+  readWorkerEnabled,
   spentTodayUsdt,
   writeFriday,
 } from "@parallax/core/persist";
-import { readBalances } from "@parallax/web3";
+import { fetchMarketPrint, readBalances } from "@parallax/web3";
 import { fail } from "@/lib/http";
 
 async function studioStatus(): Promise<{ live: boolean; address: string }> {
@@ -47,6 +50,31 @@ export async function GET(request: Request) {
         writeFriday(ticker, friday);
       }
     }
+    let live: {
+      perShare: number | null;
+      symbol: string;
+      isMarketOpen: boolean;
+      stockPrice: number | null;
+      volume: number;
+    } | null = null;
+    try {
+      const underlying = getUnderlying(ticker);
+      const wrapper = underlying
+        ? wrapperList(underlying).find((item) => item.rail === "bStock") || wrapperList(underlying)[0]
+        : undefined;
+      if (wrapper) {
+        const print = await fetchMarketPrint(wrapper.address);
+        live = {
+          perShare: print.perShare,
+          symbol: wrapper.symbol,
+          isMarketOpen: print.isMarketOpen,
+          stockPrice: print.stockPrice,
+          volume: print.volume,
+        };
+      }
+    } catch {
+      live = null;
+    }
     const studio = await studioStatus();
     const portfolio = wallet ? await readBalances(wallet) : null;
     const holdings: HoldingGap[] = (portfolio?.lines ?? [])
@@ -66,6 +94,10 @@ export async function GET(request: Request) {
       portfolio,
       brief: weekendBrief(session, holdings),
       identity: readEnv().agentId,
+      live,
+      armed: readArmed(),
+      workerEnabled: readWorkerEnabled(),
+      fills: readFills(),
     });
   } catch (err) {
     return fail(err);

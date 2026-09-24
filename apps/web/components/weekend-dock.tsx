@@ -16,11 +16,14 @@ export function WeekendDock() {
   const sessionOpen = useParallax((s) => s.sessionOpen);
   const sessionOpenDate = useParallax((s) => s.sessionOpenDate);
   const ticker = useParallax((s) => s.ticker);
+  const livePrint = useParallax((s) => s.livePrint);
+  const liveSymbol = useParallax((s) => s.liveSymbol);
+  const stockReference = useParallax((s) => s.stockReference);
   const saveJob = useParallax((s) => s.saveJob);
   const open = books.filter((book) => book.status === "OPEN").length;
   const held = (portfolio?.lines ?? []).filter((line) => line.rail && line.amount > 0);
   const tradable = held.filter((line) => books.some((book) => book.wrapper.symbol === line.symbol && book.status === "OPEN")).length;
-  const refClose = priorClose ?? fridayClose;
+  const refClose = priorClose ?? fridayClose ?? stockReference;
   const gaps = books
     .map((book) => (book.best?.ok && refClose ? gapPct(book.best.perShare, refClose) : null))
     .filter((n): n is number => n != null);
@@ -34,7 +37,8 @@ export function WeekendDock() {
     : session.atmosphere === "open"
       ? "Cash live · gap compressed"
       : `Cash dark ${Math.floor(Math.max(0, session.countdownMs) / 3_600_000)}:${String(Math.floor(Math.max(0, session.countdownMs) / 60_000) % 60).padStart(2, "0")}`;
-  const closeLabel = priorDate ? `prior close ${shortYmd(priorDate)}` : "Friday";
+  const closeLabel = priorDate ? `prior close ${shortYmd(priorDate)}` : fridayClose ? "Friday cash close" : "TradFi reference";
+  const liveGap = livePrint && refClose ? gapPct(livePrint, refClose) : null;
 
   return (
     <section id="weekend" className="fog-target flex-1 border-t border-line pt-5">
@@ -44,7 +48,11 @@ export function WeekendDock() {
         {held.length ? `${tradable} of ${held.length} holdings tradable` : `${open} of ${books.length || 3} rails open`}
       </p>
       <p className="num mt-1 text-sm">
-        {median == null ? "Prior cash close unavailable" : `Median ${formatPct(median)} vs ${closeLabel}${refClose ? ` ${formatPx(refClose)}` : ""}`}
+        {median != null
+          ? `Median ${formatPct(median)} vs ${closeLabel}${refClose ? ` ${formatPx(refClose)}` : ""}`
+          : refClose
+            ? `${closeLabel} ${formatPx(refClose)}${livePrint ? ` · Live BSC${liveSymbol ? ` ${liveSymbol}` : ""} ${formatPx(livePrint)}` : ""}${liveGap != null ? ` · ${formatPct(liveGap)}` : ""}`
+            : "Prior cash close unavailable"}
       </p>
       <p className="num mt-1 text-xs text-dim">
         {[

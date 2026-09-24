@@ -11,3 +11,6 @@ dist
 tsconfig.tsbuildinfo
 .vercel
 docs/live-errors
+
+.vercel
+.env*

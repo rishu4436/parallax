@@ -209,6 +209,40 @@ export interface QueuedIntent {
   jobId: string;
 }
 
+export type AgentStrategyType = "BASIS_TRADE" | "CROSS_ARB" | "CORRELATION";
+
+export interface ArmedStrategy {
+  id: string;
+  type: AgentStrategyType;
+  name: string;
+  assetPairs: string[];
+  targetSpread: number;
+  targetPortfolioRatio?: number;
+  volatilityDriftThreshold?: number;
+  usdt: string;
+  paused: boolean;
+  createdAt: number;
+  lastAction?: string;
+  lastAt?: number;
+}
+
+export interface AgentFill {
+  id: string;
+  at: number;
+  strategyId: string;
+  strategyType: AgentStrategyType;
+  ticker: string;
+  side: Side;
+  usdt: string;
+  spreadPct: number | null;
+  gasUsd: number | null;
+  x402: "funded" | "low";
+  x402Detail: string;
+  status: "filled" | "skipped" | "failed";
+  txHash?: string;
+  note: string;
+}
+
 export const QUOTE_TTL_MS = 30_000;
 
 export const RAILS: Rail[] = ["bStock", "ondo", "xStock"];

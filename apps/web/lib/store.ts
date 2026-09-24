@@ -4,7 +4,10 @@ import { create } from "zustand";
 import {
   bestLine,
   getUnderlying,
+  wrapperList,
   type AgentBeat,
+  type AgentFill,
+  type ArmedStrategy,
   type FridayPrint,
   type Job,
   type QueuedIntent,
@@ -77,6 +80,14 @@ interface ParallaxState {
   command: string;
   confirm: ConfirmDraft | null;
   candles: Candle[];
+  candleAddress?: string;
+  livePrint: number | null;
+  liveSymbol: string;
+  marketOpen: boolean | null;
+  stockReference: number | null;
+  armed: ArmedStrategy[];
+  workerEnabled: boolean;
+  fills: AgentFill[];
   wallet?: `0x${string}`;
   setWallet: (wallet?: `0x${string}`) => void;
   setCommand: (command: string) => void;
@@ -138,6 +149,13 @@ export const useParallax = create<ParallaxState>((set, get) => ({
   command: "",
   confirm: null,
   candles: [],
+  livePrint: null,
+  liveSymbol: "",
+  marketOpen: null,
+  stockReference: null,
+  armed: [],
+  workerEnabled: true,
+  fills: [],
   setWallet: (wallet) => set({ wallet }),
   setCommand: (command) => set({ command }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
@@ -208,6 +226,10 @@ export const useParallax = create<ParallaxState>((set, get) => ({
       friday?: FridayPrint | null;
       portfolio?: BalanceReport | null;
       brief?: string[];
+      live?: { perShare: number | null; symbol: string; isMarketOpen: boolean; stockPrice: number | null } | null;
+      armed?: ArmedStrategy[];
+      workerEnabled?: boolean;
+      fills?: AgentFill[];
     };
     if (!body.ok) return;
     const root = document.documentElement;
@@ -232,7 +254,18 @@ export const useParallax = create<ParallaxState>((set, get) => ({
       priorDate: body.friday?.priorDate ?? get().priorDate,
       sessionOpen: body.friday?.sessionOpen ?? get().sessionOpen,
       sessionOpenDate: body.friday?.sessionOpenDate ?? get().sessionOpenDate,
+      livePrint: body.live?.perShare ?? null,
+      liveSymbol: body.live?.symbol || "",
+      marketOpen: body.live ? body.live.isMarketOpen : null,
+      stockReference: body.live?.stockPrice ?? null,
+      armed: body.armed || [],
+      workerEnabled: body.workerEnabled !== false,
+      fills: body.fills || [],
     });
+    const underlying = getUnderlying(get().ticker);
+    const wrappers = underlying ? wrapperList(underlying) : [];
+    const preferred = wrappers.find((item) => item.rail === (get().lockedRail || "bStock")) || wrappers[0];
+    if (preferred && get().candleAddress !== preferred.address) void get().loadCandles(preferred.address);
   },
   signQueued: async (item) => {
     const rail = item.railLock;
@@ -370,7 +403,7 @@ export const useParallax = create<ParallaxState>((set, get) => ({
   loadCandles: async (address) => {
     const res = await fetch(`/api/kline?address=${address}`);
     const body = (await res.json()) as { ok: boolean; candles?: Candle[]; message?: string };
-    set({ candles: body.ok ? body.candles || [] : [] });
+    if (body.ok) set({ candles: body.candles || [], candleAddress: address });
   },
 }));
 

@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import {
-  COPY,
   STRATEGY_CATALOG,
   adviseDesk,
   cashSession,
@@ -34,8 +33,6 @@ export function StrategiesDock() {
   const jobs = useParallax((s) => s.jobs);
   const pauseJob = useParallax((s) => s.pauseJob);
   const saveJob = useParallax((s) => s.saveJob);
-  const signQueued = useParallax((s) => s.signQueued);
-  const queue = useParallax((s) => s.queue);
   const ticker = useParallax((s) => s.ticker);
   const books = useParallax((s) => s.books);
   const fridayClose = useParallax((s) => s.fridayClose);
@@ -74,7 +71,7 @@ export function StrategiesDock() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="kicker">Jobs</h2>
-          <p className="mt-2 max-w-xl text-sm text-dim">Pick a strategy for {ticker}. Agent jobs stay inside the order and daily caps. You still sign.</p>
+          <p className="mt-2 max-w-xl text-sm text-dim">Pick a strategy for {ticker}. Armed jobs stay inside the order and daily caps. The worker sends them from this machine.</p>
         </div>
         <p className="text-xs text-dim">
           Worker {beat?.status === "live" ? "running" : "stopped"}
@@ -82,19 +79,8 @@ export function StrategiesDock() {
           {studio.address ? ` · ${shortAddr(studio.address)}` : ""}
         </p>
       </div>
-      {queue.length || jobs.length ? (
+      {jobs.length ? (
         <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {queue.map((item) => (
-            <div key={item.id} className="border border-gold/50 px-3 py-3 text-sm">
-              <p className="text-gold">
-                Sign {item.side} {item.usdt} {item.ticker}
-                {item.railLock ? ` · ${item.railLock}` : ""}
-              </p>
-              <button className="mt-3 h-9 bg-gold px-4 text-[11px] tracking-[0.16em] text-bg" onClick={() => void signQueued(item)}>
-                SIGN
-              </button>
-            </div>
-          ))}
           {jobs.map((job) => (
             <div key={job.id} className="flex items-center justify-between gap-3 border border-line px-3 py-3 text-sm">
               <span>
@@ -136,7 +122,7 @@ export function StrategiesDock() {
           );
         })}
       </ul>
-      <p className="mt-2 text-xs text-dim">{COPY.strategies}</p>
+      <p className="mt-2 text-xs text-dim">Eight desk strategies, plus Basis Trade, Cross-Protocol Arb, and Correlation Rebalance on Trade.</p>
       {picked && picked !== "session_hours" ? (
         <JobForm
           key={picked}

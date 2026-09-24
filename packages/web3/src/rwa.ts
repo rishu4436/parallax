@@ -1,4 +1,4 @@
-import { RWA_LIST_URL, type LiveListRow } from "@parallax/core";
+import { cashSession, fetchCashPrints, RWA_LIST_URL, type LiveListRow } from "@parallax/core";
 
 const HEADERS = {
   accept: "application/json",
@@ -47,9 +47,9 @@ export async function fetchDynamic(contractAddress: string): Promise<DynamicSnap
   const multiplier = Number(data.tokenInfo?.sharesMultiplier);
   const stock = Number(data.stockInfo?.price);
   return {
-    price: Number.isFinite(price) ? price : null,
+    price: Number.isFinite(price) && price > 0 ? price : null,
     multiplier: Number.isFinite(multiplier) && multiplier > 0 ? multiplier : null,
-    stockPrice: Number.isFinite(stock) ? stock : null,
+    stockPrice: Number.isFinite(stock) && stock > 0 ? stock : null,
     marketStatus: data.statusInfo?.marketStatus ?? null,
     reasonCode: data.statusInfo?.reasonCode ?? null,
     openState: data.statusInfo?.openState ?? null,
@@ -59,6 +59,7 @@ export async function fetchDynamic(contractAddress: string): Promise<DynamicSnap
 export interface Candle {
   t: number;
   c: number;
+  v?: number;
 }
 
 export async function fetchKline(contractAddress: string): Promise<Candle[]> {
@@ -72,8 +73,44 @@ export async function fetchKline(contractAddress: string): Promise<Candle[]> {
   if (!rows) throw new Error(body.message || "kline returned no rows");
   return rows
     .map((row) => {
-      const cell = row as [number, string, string, string, string];
-      return { t: Number(cell[0]), c: Number(cell[4]) };
+      const cell = row as [number, string, string, string, string, string?];
+      const volume = Number(cell[5]);
+      return { t: Number(cell[0]), c: Number(cell[4]), v: Number.isFinite(volume) ? volume : 0 };
     })
     .filter((c) => Number.isFinite(c.c) && c.c > 0);
+}
+
+export interface TradFiSnap {
+  referencePrice: number | null;
+  fridayClose: number | null;
+  fridayDate: string | null;
+  priorClose: number | null;
+  priorDate: string | null;
+  isMarketOpen: boolean;
+  source: string;
+}
+
+/** Friday cash close from the daily chart, with the RWA dynamic flag for whether cash is open. */
+export async function fetchTradFiReference(ticker: string, contractAddress?: string): Promise<TradFiSnap> {
+  const prints = await fetchCashPrints(ticker).catch(() => null);
+  const dynamic = contractAddress ? await fetchDynamic(contractAddress).catch(() => null) : null;
+  const fridayClose = prints?.friday?.close ?? null;
+  const priorClose = prints?.prior?.close ?? null;
+  const stock = dynamic?.stockPrice ?? null;
+  const referencePrice = priorClose ?? fridayClose ?? stock;
+  const cashOpen = cashSession().atmosphere === "open";
+  const chainOpen = dynamic?.openState;
+  const isMarketOpen = chainOpen === false ? false : chainOpen === true ? true : cashOpen;
+  let source = "unavailable";
+  if (priorClose || fridayClose) source = prints?.source || "yahoo-chart-1d";
+  else if (stock) source = "binance-rwa-dynamic";
+  return {
+    referencePrice,
+    fridayClose,
+    fridayDate: prints?.friday?.sessionDate ?? null,
+    priorClose,
+    priorDate: prints?.prior?.sessionDate ?? null,
+    isMarketOpen,
+    source,
+  };
 }

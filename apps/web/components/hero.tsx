@@ -12,14 +12,14 @@ export function Hero() {
   const fridayClose = useParallax((s) => s.fridayClose);
   const fridayDate = useParallax((s) => s.fridayDate);
   const priorClose = useParallax((s) => s.priorClose);
-  const priorOpen = useParallax((s) => s.priorOpen);
   const priorDate = useParallax((s) => s.priorDate);
-  const sessionOpen = useParallax((s) => s.sessionOpen);
-  const sessionOpenDate = useParallax((s) => s.sessionOpenDate);
   const lockedRail = useParallax((s) => s.lockedRail);
   const quoteError = useParallax((s) => s.quoteError);
   const quoting = useParallax((s) => s.quoting);
   const candles = useParallax((s) => s.candles);
+  const livePrint = useParallax((s) => s.livePrint);
+  const liveSymbol = useParallax((s) => s.liveSymbol);
+  const stockReference = useParallax((s) => s.stockReference);
   const mounted = useMounted();
   const { isConnected } = useAccount();
   const underlying = getUnderlying(ticker);
@@ -27,8 +27,6 @@ export function Hero() {
   const quote = active?.best;
   const allClosed = books.length > 0 && books.every((book) => book.status === "CLOSED" || book.status === "HALTED");
   const vsPriorClose = quote?.ok ? gapPct(quote.perShare, priorClose) : null;
-  const vsPriorOpen = quote?.ok ? gapPct(quote.perShare, priorOpen) : null;
-  const vsSessionOpen = quote?.ok ? gapPct(quote.perShare, sessionOpen) : null;
   const vsFriday = quote?.ok ? gapPct(quote.perShare, fridayClose) : null;
   const primaryGap = vsPriorClose ?? vsFriday;
   const primaryPx = priorClose ?? fridayClose;
@@ -37,10 +35,30 @@ export function Hero() {
     : fridayDate
       ? `Friday cash close ${shortYmd(fridayDate)}`
       : "Friday cash close";
-  const showFriday = Boolean(vsFriday != null && fridayDate && fridayDate !== priorDate);
   const others = books.filter((book) => book.wrapper.rail !== active?.wrapper.rail && book.best?.ok && quote?.ok);
 
-  const price = quote?.ok ? formatPx(quote.perShare) : null;
+  const frozen = priorClose ?? fridayClose ?? stockReference;
+  const frozenLabel = priorDate
+    ? `prior close ${shortYmd(priorDate)}`
+    : fridayDate
+      ? `Friday cash close ${shortYmd(fridayDate)}`
+      : stockReference
+        ? "TradFi reference"
+        : "Friday cash close";
+  const livePx = quote?.ok ? quote.perShare : livePrint;
+  const shownLive = livePrint ?? livePx;
+  const liveGap = shownLive && frozen ? gapPct(shownLive, frozen) : null;
+  const fridayGap = shownLive && fridayClose ? gapPct(shownLive, fridayClose) : null;
+  const oracleLine =
+    fridayClose && shownLive
+      ? `Friday cash close${fridayDate ? ` ${shortYmd(fridayDate)}` : ""} ${formatPx(fridayClose)} · Live BSC print${liveSymbol ? ` ${liveSymbol}` : ""} ${formatPx(shownLive)}${fridayGap != null ? ` · ${formatPct(fridayGap)}` : ""}`
+      : shownLive && frozen
+        ? `${frozenLabel} ${formatPx(frozen)} · Live BSC print${liveSymbol ? ` ${liveSymbol}` : ""} ${formatPx(shownLive)}${liveGap != null ? ` · ${formatPct(liveGap)}` : ""}`
+        : null;
+  const headlineGap = quote?.ok ? primaryGap : liveGap;
+  const headlinePx = quote?.ok ? primaryPx : frozen;
+  const headlineLabel = quote?.ok ? primaryLabel : frozenLabel;
+  const price = quote?.ok ? formatPx(quote.perShare) : livePrint ? formatPx(livePrint) : null;
   return (
     <div>
       <div className="flex items-end justify-between gap-4">
@@ -55,24 +73,14 @@ export function Hero() {
         {price ? (
           <>
             <p className="display num text-5xl leading-none sm:text-6xl md:text-7xl">{price}</p>
-            {primaryGap == null || !primaryPx ? (
+            {headlineGap == null || !headlinePx ? (
               <p className="mt-4 text-sm text-dim">{COPY.priorMissing}</p>
             ) : (
-              <p className={`num mt-4 text-sm ${primaryGap >= 0 ? "text-up" : "text-down"}`}>
-                {formatPct(primaryGap)} vs {primaryLabel} {formatPx(primaryPx)}
+              <p className={`num mt-4 text-sm ${headlineGap >= 0 ? "text-up" : "text-down"}`}>
+                {formatPct(headlineGap)} vs {headlineLabel} {formatPx(headlinePx)}
               </p>
             )}
-            <p className="num mt-2 text-xs text-dim">
-              {[
-                vsPriorOpen != null && priorOpen && priorDate ? `${formatPct(vsPriorOpen)} vs prior open ${shortYmd(priorDate)} ${formatPx(priorOpen)}` : null,
-                vsSessionOpen != null && sessionOpen && sessionOpenDate
-                  ? `${formatPct(vsSessionOpen)} vs session open ${shortYmd(sessionOpenDate)} ${formatPx(sessionOpen)}`
-                  : null,
-                showFriday && fridayClose ? `${formatPct(vsFriday as number)} vs Friday close ${formatPx(fridayClose)}` : null,
-              ]
-                .filter(Boolean)
-                .join("  ·  ")}
-            </p>
+            {oracleLine ? <p className="num mt-2 text-xs text-dim">{oracleLine}</p> : null}
             <p className="num mt-2 text-xs text-dim">
               {others.length
                 ? others
@@ -91,18 +99,18 @@ export function Hero() {
             <p className="display max-w-xl text-3xl leading-tight text-down md:text-4xl">
               {allClosed ? COPY.allClosed : quoteError || active?.errorText || books[0]?.errorText || (quoting ? "Quoting BSC" : COPY.emptySearch)}
             </p>
-            <p className="mt-3 text-sm text-dim">
-              {priorClose && priorDate
-                ? `Prior close ${shortYmd(priorDate)} ${formatPx(priorClose)}`
-                : fridayClose
-                  ? `Friday cash close ${formatPx(fridayClose)}`
-                  : COPY.priorMissing}
-            </p>
+            <p className="mt-3 text-sm text-dim">{oracleLine || COPY.priorMissing}</p>
           </div>
         )}
       </div>
       <p className="kicker mt-8">vs cash prints</p>
-      <Spark candles={candles} prior={priorClose} friday={fridayDate !== priorDate ? fridayClose : null} multiplier={active?.wrapper.multiplier || 1} />
+      <Spark
+        candles={candles}
+        prior={priorClose}
+        friday={fridayDate !== priorDate ? fridayClose : null}
+        multiplier={active?.wrapper.multiplier || 1}
+        fallback={oracleLine}
+      />
       <p className="sr-only">{wrapperList(underlying || { ticker, name: ticker, wrappers: {} }).length}</p>
     </div>
   );
@@ -113,13 +121,17 @@ function Spark({
   prior,
   friday,
   multiplier,
+  fallback,
 }: {
   candles: { c: number }[];
   prior: number | null;
   friday: number | null;
   multiplier: number;
+  fallback: string | null;
 }) {
-  if (!candles.length) return <div className="mt-4 h-16 text-xs text-dim">24h print loads with the rail.</div>;
+  if (!candles.length) {
+    return <div className="mt-4 h-16 text-xs text-dim">{fallback || "24h print loads with the rail."}</div>;
+  }
   const values = candles.map((candle) => candle.c);
   const priorRef = prior ? prior * multiplier : null;
   const fridayRef = friday ? friday * multiplier : null;

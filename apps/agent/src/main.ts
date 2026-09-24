@@ -18,6 +18,7 @@ import {
 import { pushQueue, readJobs, readQueue, readSettings, spentTodayUsdt, upsertTape, writeBeat, writeFriday, writeJobs } from "@parallax/core/persist";
 import { quoteIntent } from "@parallax/web3";
 import { randomUUID } from "node:crypto";
+import { runArmedDesk } from "./agentRuntime";
 import { agentWallet, pendingOrderId, pollOrder, sendAgentSwap, tokenQtyFromNotional } from "./execute";
 
 async function x402Status(): Promise<{ x402: "funded" | "low"; detail: string }> {
@@ -196,6 +197,8 @@ async function runTick() {
   }
   if (changed) writeJobs(jobs);
 
+  await runArmedDesk({ agent, x402: pay.x402, x402Detail: pay.detail, settings, now });
+
   if (session.et.weekday === 5 && session.et.hour >= 16) {
     for (const underlying of listUnderlyings()) {
       const cash = await fetchCashPrints(underlying.ticker, now).catch(() => null);
@@ -206,6 +209,6 @@ async function runTick() {
   }
 }
 
-console.log("PARALLAX desk worker. A signed-in Agentic Wallet sends the clip. Otherwise it waits for SIGN.");
+console.log("PARALLAX desk worker. Armed strategies broadcast from the Agentic Wallet session. Legacy jobs still queue when that session is signed out.");
 void tick();
 setInterval(() => void tick(), 20_000);

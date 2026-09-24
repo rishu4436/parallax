@@ -13,3 +13,8 @@ export * from "./plainRule";
 export * from "./plan";
 export * from "./settings";
 export * from "./typed";
+export * from "./loops/BaseStrategy";
+export * from "./loops/BasisTrade";
+export * from "./loops/CrossArb";
+export * from "./loops/Correlation";
+export * from "./loops/create";

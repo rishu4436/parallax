@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { readEnv } from "@parallax/config";
 import { etParts } from "./session";
-import type { AgentBeat, FridayPrint, Job, QueuedIntent, Settings, TapeRow } from "./types";
+import type { AgentBeat, AgentFill, ArmedStrategy, FridayPrint, Job, QueuedIntent, Settings, TapeRow } from "./types";
 import { RAILS } from "./types";
 
 function dir(): string {
@@ -114,4 +114,32 @@ export function clearQueueItem(id: string): void {
     "queue.json",
     readQueue().filter((row) => row.id !== id),
   );
+}
+
+export function readArmed(): ArmedStrategy[] {
+  return readJson<ArmedStrategy[]>("armed.json", []);
+}
+
+export function writeArmed(rows: ArmedStrategy[]): ArmedStrategy[] {
+  writeJson("armed.json", rows);
+  return rows;
+}
+
+export function readWorkerEnabled(): boolean {
+  return readJson<{ enabled?: boolean }>("worker.json", {}).enabled !== false;
+}
+
+export function writeWorkerEnabled(enabled: boolean): boolean {
+  writeJson("worker.json", { enabled });
+  return enabled;
+}
+
+export function readFills(): AgentFill[] {
+  return readJson<AgentFill[]>("fills.json", []);
+}
+
+export function pushFill(row: AgentFill): AgentFill[] {
+  const next = [row, ...readFills().filter((item) => item.id !== row.id)].slice(0, 40);
+  writeJson("fills.json", next);
+  return next;
 }

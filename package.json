@@ -6,7 +6,7 @@
     "dev": "pnpm --filter @parallax/web dev",
     "build": "pnpm --filter @parallax/web build",
     "quote": "tsx scripts/quote-nvda.ts",
-    "test": "tsx --test packages/core/src/session.test.ts packages/core/src/router.test.ts packages/core/src/jobs.test.ts packages/core/src/strategies.test.ts packages/core/src/friday.test.ts packages/core/src/settings.test.ts packages/core/src/plainRule.test.ts packages/core/src/plan.test.ts apps/agent/src/execute.test.ts",
+    "test": "tsx --test packages/core/src/session.test.ts packages/core/src/router.test.ts packages/core/src/jobs.test.ts packages/core/src/strategies.test.ts packages/core/src/friday.test.ts packages/core/src/settings.test.ts packages/core/src/plainRule.test.ts packages/core/src/plan.test.ts packages/core/src/loops.test.ts apps/agent/src/execute.test.ts",
     "agent": "tsx apps/agent/src/main.ts",
     "desk": "node scripts/desk.mjs",
     "mcp": "tsx apps/mcp/src/main.ts"
