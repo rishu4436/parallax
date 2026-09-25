@@ -68,7 +68,7 @@ export interface CopilotReply {
 export function answerCopilot(
   intent: CopilotIntent,
   cards: OpportunityCard[],
-  focus?: { ticker: string; books: RailBook[]; netPct: number | null; symbol?: string },
+  focus?: { ticker: string; books?: RailBook[]; netPct: number | null; symbol?: string },
 ): CopilotReply {
   const open = cards.filter((row) => row.status === "OPEN");
   if (intent.type === "help") {
