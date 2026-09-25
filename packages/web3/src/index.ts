@@ -1,4 +1,4 @@
-export { Web3ApiError, isWeb3Error, web3Fetch } from "./client";
+export { Web3ApiError, isWeb3Error, web3Fetch, retryDelay, shouldRetryHttp, MAX_WEB3_IN_FLIGHT } from "./client";
 export * from "./devex";
 export * from "./market";
 export * from "./trading";

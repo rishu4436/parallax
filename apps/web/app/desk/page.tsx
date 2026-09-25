@@ -1,10 +1,14 @@
 "use client";
 
 import { AgentExecutionLog, StrategyArm } from "@/components/agent-panel";
+import { Comparison } from "@/components/comparison";
 import { ConfirmTakeover } from "@/components/confirm-takeover";
+import { Copilot } from "@/components/copilot";
 import { StrategiesDock } from "@/components/strategies-dock";
 import { Hero } from "@/components/hero";
+import { OpportunityEngine } from "@/components/opportunity-engine";
 import { PortfolioDock } from "@/components/portfolio-dock";
+import { SessionStrip } from "@/components/session-strip";
 import { SettingsSheet } from "@/components/settings-sheet";
 import { Tape } from "@/components/tape";
 import { TopBar } from "@/components/top-bar";
@@ -13,6 +17,7 @@ import { useParallax } from "@/lib/store";
 
 export default function DeskPage() {
   const view = useParallax((s) => s.view);
+  const analyzeOpen = useParallax((s) => s.analyzeOpen);
 
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-bg/80 text-ink">
@@ -22,7 +27,9 @@ export default function DeskPage() {
         {view === "trade" ? (
           <div className="grid min-h-full grid-cols-[minmax(0,1.4fr)_minmax(280px,0.7fr)] max-[900px]:grid-cols-1">
             <section className="flex min-h-0 flex-col gap-4 border-r border-line px-6 py-6 md:px-8 max-[900px]:border-r-0">
+              <SessionStrip />
               <Hero />
+              {analyzeOpen ? <Comparison /> : null}
               <VenueStack />
             </section>
             <TradeAside />
@@ -78,6 +85,8 @@ function TradeAside() {
 
   return (
     <aside className="flex flex-col gap-6 px-6 py-6 md:px-7">
+      <OpportunityEngine />
+      <Copilot />
       <AgentExecutionLog initial={fills} />
       <section>
         <h2 className="kicker">Armed jobs</h2>

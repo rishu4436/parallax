@@ -17,6 +17,7 @@ export function TopBar() {
   const setSettingsOpen = useParallax((s) => s.setSettingsOpen);
   const refreshDesk = useParallax((s) => s.refreshDesk);
   const refreshQuote = useParallax((s) => s.refreshQuote);
+  const refreshScan = useParallax((s) => s.refreshScan);
   const setWallet = useParallax((s) => s.setWallet);
   const { address } = useAccount();
   const mounted = useMounted();
@@ -29,6 +30,7 @@ export function TopBar() {
   useEffect(() => {
     void refreshDesk();
     void refreshQuote();
+    void refreshScan();
     const desk = setInterval(() => void refreshDesk(), 8000);
     const quote = setInterval(() => {
       if (!useParallax.getState().confirm) void refreshQuote();
@@ -37,7 +39,7 @@ export function TopBar() {
       clearInterval(desk);
       clearInterval(quote);
     };
-  }, [address, refreshDesk, refreshQuote]);
+  }, [address, refreshDesk, refreshQuote, refreshScan]);
 
   useEffect(() => {
     if (!mounted) return;

@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import {
+  WALLET_MISMATCH,
   bestLine,
   getUnderlying,
   wrapperList,
@@ -15,6 +16,7 @@ import {
   type RailBook,
   type Settings,
   type Side,
+  type OpportunityCard,
   type TapeRow,
   type VenueQuote,
 } from "@parallax/core";
@@ -77,6 +79,10 @@ interface ParallaxState {
   brief: string[];
   settingsOpen: boolean;
   view: "trade" | "jobs" | "wallet";
+  analyzeOpen: boolean;
+  opportunities: OpportunityCard[];
+  scanning: boolean;
+  scanAt: number;
   command: string;
   confirm: ConfirmDraft | null;
   candles: Candle[];
@@ -89,13 +95,17 @@ interface ParallaxState {
   workerEnabled: boolean;
   fills: AgentFill[];
   wallet?: `0x${string}`;
+  connectNonce: number;
+  askConnect: () => void;
   setWallet: (wallet?: `0x${string}`) => void;
   setCommand: (command: string) => void;
   setSettingsOpen: (open: boolean) => void;
   setView: (view: "trade" | "jobs" | "wallet") => void;
+  setAnalyzeOpen: (open: boolean) => void;
   setUsdt: (usdt: string) => void;
   selectTicker: (ticker: string, rail?: Rail, side?: Side) => Promise<void>;
   refreshQuote: () => Promise<void>;
+  refreshScan: () => Promise<void>;
   refreshDesk: () => Promise<void>;
   lockRail: (rail: Rail) => void;
   openConfirm: (book: RailBook, side: Side, actor?: "user" | "agent") => Promise<void>;
@@ -146,6 +156,10 @@ export const useParallax = create<ParallaxState>((set, get) => ({
   settingsOpen: false,
   spentToday: 0,
   view: "trade",
+  analyzeOpen: false,
+  opportunities: [],
+  scanning: false,
+  scanAt: 0,
   command: "",
   confirm: null,
   candles: [],
@@ -156,10 +170,13 @@ export const useParallax = create<ParallaxState>((set, get) => ({
   armed: [],
   workerEnabled: true,
   fills: [],
+  connectNonce: 0,
+  askConnect: () => set((state) => ({ connectNonce: state.connectNonce + 1 })),
   setWallet: (wallet) => set({ wallet }),
   setCommand: (command) => set({ command }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
   setView: (view) => set({ view }),
+  setAnalyzeOpen: (open) => set({ analyzeOpen: open }),
   setUsdt: (usdt) => set({ usdt, sizeChosen: true }),
   selectTicker: async (ticker, rail, side) => {
     set({ ticker, lockedRail: rail, side: side || get().side });
@@ -206,6 +223,17 @@ export const useParallax = create<ParallaxState>((set, get) => ({
     });
     const active = res.book.books.find((book) => book.wrapper.rail === get().lockedRail) || res.book.best;
     if (active) void get().loadCandles(active.wrapper.address);
+  },
+  refreshScan: async () => {
+    if (get().scanning) return;
+    set({ scanning: true });
+    const res = await fetch(`/api/scan?usdt=${encodeURIComponent(get().usdt)}`, { cache: "no-store" }).catch(() => null);
+    if (!res) {
+      set({ scanning: false });
+      return;
+    }
+    const body = (await res.json()) as { ok?: boolean; at?: number; cards?: OpportunityCard[] };
+    set({ scanning: false, opportunities: body.cards || [], scanAt: body.at || Date.now() });
   },
   refreshDesk: async () => {
     const { wallet, ticker } = get();
@@ -319,7 +347,7 @@ export const useParallax = create<ParallaxState>((set, get) => ({
       actor,
     };
     set({ confirm: draft, side, lockedRail: book.wrapper.rail });
-    const res = await post<PrepareResult & { ok: boolean; message?: string }>("/api/prepare", {
+    const res = await post<PrepareResult & { ok: boolean; message?: string; step?: string }>("/api/prepare", {
       intent: {
         ticker: get().ticker,
         side,
@@ -332,6 +360,7 @@ export const useParallax = create<ParallaxState>((set, get) => ({
       quote,
     });
     set({ confirm: { ...draft, preparing: false, result: res, note: res.message } });
+    if (res.step === "rejected" && res.message === WALLET_MISMATCH) await get().requoteConfirm();
   },
   requoteConfirm: async () => {
     const current = get().confirm;

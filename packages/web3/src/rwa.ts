@@ -1,4 +1,18 @@
-import { cashSession, fetchCashPrints, RWA_LIST_URL, type LiveListRow } from "@parallax/core";
+import { getAddress } from "viem";
+import {
+  RWA_MARKET_SOURCE,
+  RWA_PRICE_SOURCE,
+  cashPrintsFromRwaMarket,
+  cashSession,
+  fetchCashPrints,
+  mergePrints,
+  RWA_LIST_URL,
+  type CashPrints,
+  type LiveListRow,
+  type Wrapper,
+} from "@parallax/core";
+import { readEnv } from "@parallax/config";
+import { web3Fetch } from "./client";
 
 const HEADERS = {
   accept: "application/json",
@@ -23,6 +37,8 @@ export interface DynamicSnap {
   price: number | null;
   multiplier: number | null;
   stockPrice: number | null;
+  previousClose: number | null;
+  open: number | null;
   marketStatus: string | null;
   reasonCode: string | null;
   openState: boolean | null;
@@ -37,7 +53,14 @@ export async function fetchDynamic(contractAddress: string): Promise<DynamicSnap
   const body = (await res.json()) as {
     data?: {
       tokenInfo?: { price?: string; sharesMultiplier?: string };
-      stockInfo?: { price?: string | null };
+      stockInfo?: {
+        price?: string | null;
+        previousClose?: string | null;
+        prevClose?: string | null;
+        preClose?: string | null;
+        open?: string | null;
+        openPrice?: string | null;
+      };
       statusInfo?: { marketStatus?: string | null; reasonCode?: string | null; openState?: boolean | null };
     };
   };
@@ -46,14 +69,120 @@ export async function fetchDynamic(contractAddress: string): Promise<DynamicSnap
   const price = Number(data.tokenInfo?.price);
   const multiplier = Number(data.tokenInfo?.sharesMultiplier);
   const stock = Number(data.stockInfo?.price);
+  const previousClose = firstPositive(
+    data.stockInfo?.previousClose,
+    data.stockInfo?.prevClose,
+    data.stockInfo?.preClose,
+  );
+  const open = firstPositive(data.stockInfo?.open, data.stockInfo?.openPrice);
   return {
     price: Number.isFinite(price) && price > 0 ? price : null,
     multiplier: Number.isFinite(multiplier) && multiplier > 0 ? multiplier : null,
     stockPrice: Number.isFinite(stock) && stock > 0 ? stock : null,
+    previousClose,
+    open,
     marketStatus: data.statusInfo?.marketStatus ?? null,
     reasonCode: data.statusInfo?.reasonCode ?? null,
     openState: data.statusInfo?.openState ?? null,
   };
+}
+
+function firstPositive(...values: unknown[]): number | null {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
+export interface RwaTokenPrice {
+  tokenContractAddress: string;
+  platformId: string | null;
+  /** On-chain token price in USD. */
+  tokenPrice: number | null;
+  /**
+   * Per-share converted price from the on-chain token, not an official cash print.
+   * Use as a live TradFi-shaped reference when the cash chart is missing.
+   */
+  referencePrice: number | null;
+}
+
+export function parseRwaPriceRows(data: unknown): RwaTokenPrice[] {
+  const rows = Array.isArray(data) ? data : data ? [data] : [];
+  const out: RwaTokenPrice[] = [];
+  for (const row of rows) {
+    const rec = row && typeof row === "object" ? (row as Record<string, unknown>) : {};
+    const tokenPrice = firstPositive(rec.tokenPrice);
+    const referencePrice = firstPositive(rec.referencePrice);
+    const tokenContractAddress = String(rec.tokenContractAddress || "");
+    if (!tokenContractAddress) continue;
+    out.push({
+      tokenContractAddress,
+      platformId: rec.platformId ? String(rec.platformId) : null,
+      tokenPrice,
+      referencePrice,
+    });
+  }
+  return out;
+}
+
+/** GET /api/v1/dex/market/rwa/price — signed Market API. */
+export async function fetchRwaPrices(addresses: string[]): Promise<RwaTokenPrice[]> {
+  const unique = [...new Set(addresses.map((addr) => getAddress(addr)))];
+  if (!unique.length) return [];
+  const res = await web3Fetch("GET", "/api/v1/dex/market/rwa/price", {
+    query: {
+      binanceChainId: "56",
+      tokenContractAddresses: unique.join(","),
+    },
+  });
+  return parseRwaPriceRows(res.data);
+}
+
+export interface RwaUnderlyingMarket {
+  previousClose: number | null;
+  open: number | null;
+  last: number | null;
+  referencePrice: number | null;
+  raw: Record<string, unknown>;
+}
+
+export function parseRwaUnderlyingMarket(data: unknown): RwaUnderlyingMarket {
+  const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const market =
+    root.marketData && typeof root.marketData === "object"
+      ? (root.marketData as Record<string, unknown>)
+      : root;
+  const previousClose = firstPositive(
+    market.previousClose,
+    market.prevClose,
+    market.preClose,
+    market.prevClosePrice,
+    market.previousClosePrice,
+    market.priorClose,
+    root.previousClose,
+  );
+  const open = firstPositive(market.open, market.openPrice, market.preMarketOpen, root.open);
+  const last = firstPositive(
+    market.last,
+    market.lastPrice,
+    market.price,
+    market.close,
+    root.lastPrice,
+  );
+  const referencePrice = firstPositive(market.referencePrice, root.referencePrice, last);
+  return { previousClose, open, last, referencePrice, raw: root };
+}
+
+/** GET /api/v1/dex/market/rwa/underlying-market — signed Market API. */
+export async function fetchRwaUnderlyingMarket(contractAddress: string): Promise<RwaUnderlyingMarket | null> {
+  const res = await web3Fetch("GET", "/api/v1/dex/market/rwa/underlying-market", {
+    query: {
+      binanceChainId: "56",
+      tokenContractAddress: getAddress(contractAddress),
+    },
+  });
+  return parseRwaUnderlyingMarket(res.data);
 }
 
 export interface Candle {
@@ -88,29 +217,128 @@ export interface TradFiSnap {
   priorDate: string | null;
   isMarketOpen: boolean;
   source: string;
+  onchainPrice: number | null;
 }
 
-/** Friday cash close from the daily chart, with the RWA dynamic flag for whether cash is open. */
+function canSignWeb3(): boolean {
+  const env = readEnv();
+  return Boolean(env.web3ApiKey && env.web3ApiSecret);
+}
+
+export async function rwaPrintsForWrapper(ticker: string, contractAddress: string): Promise<{
+  prints: CashPrints;
+  referencePrice: number | null;
+  onchainPrice: number | null;
+  source: string;
+} | null> {
+  const empty = {
+    ticker: ticker.toUpperCase(),
+    source: RWA_MARKET_SOURCE,
+    friday: null,
+    prior: null,
+    today: null,
+  } satisfies CashPrints;
+  if (canSignWeb3()) {
+    try {
+      const [market, prices] = await Promise.all([
+        fetchRwaUnderlyingMarket(contractAddress),
+        fetchRwaPrices([contractAddress]).catch(() => [] as RwaTokenPrice[]),
+      ]);
+      const price = prices.find(
+        (row) => row.tokenContractAddress.toLowerCase() === contractAddress.toLowerCase(),
+      );
+      const prints = cashPrintsFromRwaMarket(ticker, {
+        previousClose: market?.previousClose ?? null,
+        open: market?.open ?? null,
+        last: market?.last ?? null,
+        referencePrice: market?.referencePrice ?? price?.referencePrice ?? null,
+      });
+      const hasPrint = Boolean(prints.prior || prints.friday);
+      return {
+        prints: hasPrint ? prints : empty,
+        referencePrice: market?.referencePrice ?? price?.referencePrice ?? prints.prior?.close ?? null,
+        onchainPrice: price?.tokenPrice ?? null,
+        source: hasPrint ? prints.source : price ? RWA_PRICE_SOURCE : "unavailable",
+      };
+    } catch {
+      // Fall through to the public dynamic snapshot.
+    }
+  }
+  const dynamic = await fetchDynamic(contractAddress).catch(() => null);
+  if (!dynamic) return null;
+  const prints = cashPrintsFromRwaMarket(
+    ticker,
+    {
+      previousClose: dynamic.previousClose,
+      open: dynamic.open,
+      last: dynamic.stockPrice,
+      referencePrice: dynamic.stockPrice,
+    },
+    new Date(),
+    "binance-rwa-dynamic",
+  );
+  return {
+    prints,
+    referencePrice: dynamic.stockPrice,
+    onchainPrice: dynamic.price,
+    source: prints.prior || prints.friday ? prints.source : dynamic.stockPrice ? "binance-rwa-dynamic" : "unavailable",
+  };
+}
+
+/**
+ * Signed RWA Data API first (on-chain token vs underlying reference), then Yahoo/Stooq
+ * so Friday 16:00 ET still exists when the RWA payload only has the prior session.
+ */
+export async function hydrateCashPrints(ticker: string, wrappers?: Array<Pick<Wrapper, "address"> & { rail?: Wrapper["rail"] }>): Promise<{
+  prints: CashPrints;
+  referencePrice: number | null;
+  onchainPrice: number | null;
+  source: string;
+}> {
+  const symbol = ticker.trim().toUpperCase();
+  const preferred = wrappers?.find((item) => item.rail === "bStock") || wrappers?.[0];
+  const rwa = preferred ? await rwaPrintsForWrapper(symbol, preferred.address).catch(() => null) : null;
+  const chart = await fetchCashPrints(symbol).catch(() => null);
+  const prints = rwa?.prints && chart ? mergePrints(rwa.prints, chart) : rwa?.prints && (rwa.prints.prior || rwa.prints.friday) ? rwa.prints : chart ?? {
+    ticker: symbol,
+    source: "unavailable",
+    friday: null,
+    prior: null,
+    today: null,
+  };
+  return {
+    prints,
+    referencePrice: rwa?.referencePrice ?? prints.prior?.close ?? prints.friday?.close ?? null,
+    onchainPrice: rwa?.onchainPrice ?? null,
+    source: prints.friday ? prints.source : rwa?.source || prints.source,
+  };
+}
+
+/** Friday cash close from RWA Data API, with the daily chart as fallback. */
 export async function fetchTradFiReference(ticker: string, contractAddress?: string): Promise<TradFiSnap> {
-  const prints = await fetchCashPrints(ticker).catch(() => null);
-  const dynamic = contractAddress ? await fetchDynamic(contractAddress).catch(() => null) : null;
-  const fridayClose = prints?.friday?.close ?? null;
-  const priorClose = prints?.prior?.close ?? null;
-  const stock = dynamic?.stockPrice ?? null;
-  const referencePrice = priorClose ?? fridayClose ?? stock;
+  const wrappers = contractAddress
+    ? [{ rail: "bStock" as const, address: contractAddress as Wrapper["address"] }]
+    : undefined;
+  const hydrated = await hydrateCashPrints(ticker, wrappers);
+  const prints = hydrated.prints;
+  const fridayClose = prints.friday?.close ?? null;
+  const priorClose = prints.prior?.close ?? null;
+  const referencePrice = priorClose ?? fridayClose ?? hydrated.referencePrice;
   const cashOpen = cashSession().atmosphere === "open";
+  const dynamic = contractAddress ? await fetchDynamic(contractAddress).catch(() => null) : null;
   const chainOpen = dynamic?.openState;
   const isMarketOpen = chainOpen === false ? false : chainOpen === true ? true : cashOpen;
   let source = "unavailable";
-  if (priorClose || fridayClose) source = prints?.source || "yahoo-chart-1d";
-  else if (stock) source = "binance-rwa-dynamic";
+  if (priorClose || fridayClose) source = prints.source;
+  else if (hydrated.referencePrice) source = hydrated.source;
   return {
     referencePrice,
     fridayClose,
-    fridayDate: prints?.friday?.sessionDate ?? null,
+    fridayDate: prints.friday?.sessionDate ?? null,
     priorClose,
-    priorDate: prints?.prior?.sessionDate ?? null,
+    priorDate: prints.prior?.sessionDate ?? null,
     isMarketOpen,
     source,
+    onchainPrice: hydrated.onchainPrice,
   };
 }

@@ -86,7 +86,7 @@ export function Landing() {
           <span className="mt-2 block text-gold">BNB doesn’t.</span>
         </h1>
         <p className="mt-8 max-w-xl text-lg leading-relaxed text-dim">
-          The cash market stops at 16:00 New York. The same names keep printing on chain, as three different tokens, three prices, three hour-rules. Trade the gap.
+          An execution desk for tokenized stocks on BNB Smart Chain. Observe the cash print, the three wrappers, liquidity and slip, then simulate and sign. Cash freezes. BNB doesn’t. Trade the gap.
         </p>
 
         <div className="fog-target mt-14 grid gap-10 border-t border-line pt-8 md:grid-cols-[1.1fr_1fr]">

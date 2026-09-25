@@ -153,6 +153,35 @@ export function bestLine(book: RailBook): string | null {
   return `BEST EXECUTABLE → ${book.wrapper.symbol} · ${vendor} · ${receivesLabel(book.best)}`;
 }
 
+export const WALLET_MISMATCH = "Quote wallet does not match the signer. Requoting.";
+
+/**
+ * True when /swap will return EIP-712 typed data. Trust `executionMode` on the
+ * route: Ondo can still come back LiquidMesh SWAP during a regular session.
+ */
+export function isRfqExecution(quote: { executionMode?: "SWAP" | "RFQ" }): boolean {
+  return quote.executionMode === "RFQ";
+}
+
+/**
+ * Ondo and bStocks bind `/quote` to `userWalletAddress`. Display quotes may use
+ * the fallback wallet; a trade on those rails must re-quote with the signer.
+ */
+export function needsSignerQuote(quote: { executionMode?: "SWAP" | "RFQ"; wrapper: { rail: Rail } }): boolean {
+  if (quote.executionMode === "RFQ") return true;
+  return quote.wrapper.rail === "ondo" || quote.wrapper.rail === "bStock";
+}
+
+/** Wallet gate for the gold control. Same rails as `needsSignerQuote`. */
+export function isRfqRoute(quote: { executionMode?: "SWAP" | "RFQ"; wrapper: { rail: Rail } }): boolean {
+  return needsSignerQuote(quote);
+}
+
+export function signerMatchesQuote(signer?: string | null, quotedWallet?: string | null): boolean {
+  if (!signer || !quotedWallet) return false;
+  return signer.toLowerCase() === quotedWallet.toLowerCase();
+}
+
 export function gapPct(perShare: number, fridayClose: number | null): number | null {
   if (!fridayClose || !(fridayClose > 0) || !(perShare > 0)) return null;
   return ((perShare - fridayClose) / fridayClose) * 100;

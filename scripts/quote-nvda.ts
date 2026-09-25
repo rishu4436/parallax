@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { readEnv } from "@parallax/config";
-import { cashSession, formatPct, formatPx, formatQty, fromBaseUnits, refreshMultipliers } from "@parallax/core";
-import { fetchAllRwaLists, isWeb3Error, quoteIntent } from "@parallax/web3";
+import { cashSession, formatPct, formatPx, formatQty, fromBaseUnits, getUnderlying, refreshMultipliers, wrapperList } from "@parallax/core";
+import { fetchAllRwaLists, fetchMarketPrint, isWeb3Error, quoteIntent } from "@parallax/web3";
 
 const env = readEnv();
 const wallet = env.quoteWallet;
@@ -90,10 +90,28 @@ async function main() {
   } else {
     console.log("BEST none — every rail returned an error. No price was invented.");
   }
+  let onchain = book.best?.best?.ok ? book.best.best.perShare : null;
+  if (!(onchain && onchain > 0)) {
+    const underlying = getUnderlying("NVDA");
+    const wrapper = underlying
+      ? wrapperList(underlying).find((item) => item.rail === "bStock") || wrapperList(underlying)[0]
+      : undefined;
+    if (wrapper) {
+      const print = await fetchMarketPrint(wrapper.address).catch(() => null);
+      if (print?.perShare && print.perShare > 0) {
+        onchain = print.perShare;
+        console.log(`on-chain print ${wrapper.symbol}  ${formatPx(print.perShare)}`);
+      }
+    }
+  }
+
+  if (book.referencePrice) {
+    console.log(`RWA reference ${formatPx(book.referencePrice)}${book.onchainBestPrice ? `  on-chain ${formatPx(book.onchainBestPrice)}` : ""}`);
+  }
   if (book.priorClose) {
     console.log(`Prior cash close ${book.priorDate}  ${formatPx(book.priorClose)}  open ${book.priorOpen ? formatPx(book.priorOpen) : "—"}`);
-    if (book.best?.best) {
-      const gap = ((book.best.best.perShare - book.priorClose) / book.priorClose) * 100;
+    if (onchain) {
+      const gap = ((onchain - book.priorClose) / book.priorClose) * 100;
       console.log(`parallax vs prior close ${formatPct(gap)}`);
     }
   } else {
@@ -104,9 +122,9 @@ async function main() {
   }
   if (book.fridayClose) {
     console.log(`Friday cash close ${book.fridayDate}  ${formatPx(book.fridayClose)}  via ${book.fridaySource}`);
-    if (book.best?.best && book.fridayDate !== book.priorDate) {
-      const gap = ((book.best.best.perShare - book.fridayClose) / book.fridayClose) * 100;
-      console.log(`parallax vs Friday ${formatPct(gap)}`);
+    if (onchain) {
+      const gap = book.gapVsFriday ?? ((onchain - book.fridayClose) / book.fridayClose) * 100;
+      console.log(`parallax gap ${formatPct(gap)}  ((onchain - fridayClose) / fridayClose) * 100`);
     }
   } else {
     console.log("Friday ref unavailable");

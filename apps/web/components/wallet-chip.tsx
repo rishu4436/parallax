@@ -22,6 +22,7 @@ export function WalletChip() {
   const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
   const setWallet = useParallax((s) => s.setWallet);
+  const connectNonce = useParallax((s) => s.connectNonce);
   const [open, setOpen] = useState(false);
   const [agentStatus, setAgentStatus] = useState<"CONNECTED" | "UNCONNECTED" | "CHECKING">("CHECKING");
   const [agentAddress, setAgentAddress] = useState<string | null>(null);
@@ -42,6 +43,10 @@ export function WalletChip() {
   useEffect(() => {
     void refreshAgent();
   }, [address]);
+
+  useEffect(() => {
+    if (connectNonce > 0) setOpen(true);
+  }, [connectNonce]);
 
   async function startAgent() {
     setLocalError(null);

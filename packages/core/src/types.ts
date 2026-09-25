@@ -54,6 +54,8 @@ export interface VenueQuote {
   slipKnown: boolean;
   gasUsd: number;
   approveTarget?: string;
+  /** Wallet passed to `/quote`. RFQ submit must be signed by this same address. */
+  userWalletAddress?: string;
   raw: unknown;
 }
 

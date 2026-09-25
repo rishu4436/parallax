@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bookFromRoutes, confirmGate, pickBest, assertBuildAllowed, RouterReject, scoreQuote } from "./router";
+import { bookFromRoutes, confirmGate, isRfqExecution, isRfqRoute, needsSignerQuote, pickBest, assertBuildAllowed, RouterReject, scoreQuote, signerMatchesQuote } from "./router";
 import { resolveQuery } from "./registry";
 import type { RailBook, Settings, VenueQuote, Wrapper } from "./types";
 import { COPY } from "./types";
@@ -115,6 +115,24 @@ test("a failed simulate disables sign", () => {
   });
   assert.equal(gate.sign, false);
   assert.match(gate.reason || "", /does not hold enough/);
+});
+
+test("an RFQ quote is executable only for the wallet that requested it", () => {
+  const ondo = quote({ wrapper: wrapper("ondo", "NVDAon"), outAmount: "1", ok: true, executionMode: "SWAP" });
+  const bRfq = quote({ wrapper: wrapper("bStock", "NVDAB"), outAmount: "1", ok: true, executionMode: "RFQ" });
+  const bSwap = quote({ wrapper: wrapper("bStock", "NVDAB"), outAmount: "1", ok: true, executionMode: "SWAP" });
+  const xSwap = quote({ wrapper: wrapper("xStock", "NVDAx"), outAmount: "1", ok: true, executionMode: "SWAP" });
+  assert.equal(needsSignerQuote(ondo), true);
+  assert.equal(needsSignerQuote(bRfq), true);
+  assert.equal(needsSignerQuote(bSwap), true);
+  assert.equal(needsSignerQuote(xSwap), false);
+  assert.equal(isRfqRoute(bSwap), true);
+  assert.equal(isRfqExecution(ondo), false);
+  assert.equal(isRfqExecution(bRfq), true);
+  assert.equal(isRfqExecution(bSwap), false);
+  assert.equal(signerMatchesQuote("0xAbC", "0xabc"), true);
+  assert.equal(signerMatchesQuote("0xabc", "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"), false);
+  assert.equal(signerMatchesQuote("0xabc", undefined), false);
 });
 
 test("closed rail error text keeps the code", () => {

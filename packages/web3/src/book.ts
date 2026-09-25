@@ -1,9 +1,9 @@
 import {
   QUOTE_ASSETS,
   bookFromRoutes,
-  fetchCashPrints,
   freshExpiry,
   fromBaseUnits,
+  gapPct,
   getUnderlying,
   pickBest,
   refreshMultipliers,
@@ -19,7 +19,7 @@ import {
   type Wrapper,
 } from "@parallax/core";
 import { isWeb3Error } from "./client";
-import { fetchAllRwaLists, fetchDynamic } from "./rwa";
+import { fetchAllRwaLists, fetchDynamic, hydrateCashPrints } from "./rwa";
 import { getQuote } from "./trading";
 
 export interface QuoteBook {
@@ -35,6 +35,12 @@ export interface QuoteBook {
   priorDate: string | null;
   sessionOpen: number | null;
   sessionOpenDate: string | null;
+  /** Best executable per-share print, else the RWA on-chain token price. */
+  onchainBestPrice: number | null;
+  /** Underlying reference from GET /api/v1/dex/market/rwa/price. */
+  referencePrice: number | null;
+  /** ((onchainBestPrice - fridayClose) / fridayClose) * 100 */
+  gapVsFriday: number | null;
   ms: number;
 }
 
@@ -76,6 +82,7 @@ function mapRoute(
   side: Side,
   stableDecimals: number,
   receivedAt: number,
+  wallet: Address,
 ): VenueQuote {
   const inAmount = String(route.fromTokenAmount ?? "0");
   const outAmount = String(route.toTokenAmount ?? "0");
@@ -102,6 +109,7 @@ function mapRoute(
     slipKnown: false,
     gasUsd: Number.isFinite(gasUsd) ? gasUsd : 0,
     approveTarget: route.approveTarget || undefined,
+    userWalletAddress: wallet,
     raw: route,
   };
 }
@@ -145,7 +153,7 @@ async function quoteOnce(
       amount,
       userWalletAddress: wallet,
     });
-    const routes = asRoutes(res.data).map((route) => mapRoute(wrapper, route, side, asset.decimals, started));
+    const routes = asRoutes(res.data).map((route) => mapRoute(wrapper, route, side, asset.decimals, started, wallet));
     if (!routes.length) return { quotes: [failed(wrapper, new Error("Quote returned no routes"))], ms: res.ms };
     return { quotes: routes, ms: res.ms };
   } catch (err) {
@@ -199,6 +207,7 @@ export async function quoteIntent(intent: Intent, opts?: { slip?: boolean; allow
     }),
   );
 
+  // Fan-out is unbounded here; web3Fetch queues the HMAC calls at MAX_WEB3_IN_FLIGHT.
   const primary = await Promise.all(
     sized.map(async (row) => {
       if (!row.amount) return { wrapper: row.wrapper, quotes: [row.probeError ?? failed(row.wrapper, new Error("No price to size the sell."))], ms: 0 };
@@ -232,8 +241,11 @@ export async function quoteIntent(intent: Intent, opts?: { slip?: boolean; allow
   let priorDate: string | null = null;
   let sessionOpen: number | null = null;
   let sessionOpenDate: string | null = null;
+  let referencePrice: number | null = null;
+  let rwaOnchain: number | null = null;
   try {
-    const prints = await fetchCashPrints(underlying.ticker);
+    const hydrated = await hydrateCashPrints(underlying.ticker, locked);
+    const prints = hydrated.prints;
     fridayClose = prints.friday?.close ?? null;
     fridayOpen = prints.friday?.open ?? null;
     fridayDate = prints.friday?.sessionDate ?? null;
@@ -243,9 +255,12 @@ export async function quoteIntent(intent: Intent, opts?: { slip?: boolean; allow
     priorDate = prints.prior?.sessionDate ?? null;
     sessionOpen = prints.today?.open ?? null;
     sessionOpenDate = prints.today?.sessionDate ?? null;
+    referencePrice = hydrated.referencePrice;
+    rwaOnchain = hydrated.onchainPrice;
   } catch {
     fridayClose = null;
   }
+  const onchainBestPrice = best?.best?.ok && best.best.perShare > 0 ? best.best.perShare : rwaOnchain;
   return {
     underlying,
     books,
@@ -259,6 +274,9 @@ export async function quoteIntent(intent: Intent, opts?: { slip?: boolean; allow
     priorDate,
     sessionOpen,
     sessionOpenDate,
+    onchainBestPrice,
+    referencePrice,
+    gapVsFriday: gapPct(onchainBestPrice ?? 0, fridayClose),
     ms: Date.now() - started,
   };
 }

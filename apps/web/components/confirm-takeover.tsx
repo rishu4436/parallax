@@ -12,6 +12,8 @@ import {
   parseTypedData,
   plainSimulate,
   QUOTE_ASSETS,
+  signerMatchesQuote,
+  WALLET_MISMATCH,
   type TapeRow,
 } from "@parallax/core";
 import { underlyingName, useParallax } from "@/lib/store";
@@ -134,6 +136,12 @@ export function ConfirmTakeover() {
         await broadcast(serialized, row, true);
       }
       if (result.step === "sign-rfq") {
+        if (!signerMatchesQuote(address, result.quote.userWalletAddress)) {
+          setLocalError(WALLET_MISMATCH);
+          setBusy(null);
+          await requoteConfirm();
+          return;
+        }
         const typed = parseTypedData(result.typedData);
         const signature = await walletClient.signTypedData({
           account: address,

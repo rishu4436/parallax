@@ -32,6 +32,44 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const MAX_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 350;
+export const MAX_WEB3_IN_FLIGHT = 3;
+
+export function shouldRetryHttp(status: number): boolean {
+  if (status === 429) return true;
+  return status >= 500 && status <= 599;
+}
+
+let inFlight = 0;
+const slotQueue: Array<() => void> = [];
+
+function acquireSlot(): Promise<void> {
+  if (inFlight < MAX_WEB3_IN_FLIGHT) {
+    inFlight += 1;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    slotQueue.push(() => {
+      inFlight += 1;
+      resolve();
+    });
+  });
+}
+
+function releaseSlot(): void {
+  inFlight = Math.max(0, inFlight - 1);
+  const next = slotQueue.shift();
+  if (next) next();
+}
+
+/** 350ms, then 700ms, then 1400ms, plus up to 30% jitter so a burst does not retry in lockstep. */
+export function retryDelay(attempt: number): number {
+  const base = INITIAL_BACKOFF_MS * 2 ** attempt;
+  const jitter = Math.floor(Math.random() * Math.floor(base * 0.3));
+  return base + jitter;
+}
+
 export async function web3Fetch(
   method: "GET" | "POST",
   apiPath: string,
@@ -47,37 +85,62 @@ export async function web3Fetch(
   const pathWithQuery = qs ? `${apiPath}?${qs}` : apiPath;
   const bodyText = opts?.body === undefined ? "" : JSON.stringify(opts.body);
   let waited = 0;
-
-  for (let attempt = 0; attempt < 5; attempt++) {
+  await acquireSlot();
+  try {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const timestamp = new Date().toISOString();
     const prehash = `${timestamp}${method}/build${pathWithQuery}${bodyText}`;
     const signature = createHmac("sha256", env.web3ApiSecret).update(prehash).digest("base64");
     const started = Date.now();
-    const res = await fetch(`${env.web3ApiBase}${pathWithQuery}`, {
-      method,
-      headers: {
-        "X-OC-APIKEY": env.web3ApiKey,
-        "X-OC-TIMESTAMP": timestamp,
-        "X-OC-SIGN": signature,
-        "X-OC-RECV-WINDOW": "15000",
-        "X-OC-NONCE": randomUUID(),
-        ...(bodyText ? { "content-type": "application/json" } : {}),
-      },
-      body: bodyText || undefined,
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${env.web3ApiBase}${pathWithQuery}`, {
+        method,
+        headers: {
+          "X-OC-APIKEY": env.web3ApiKey,
+          "X-OC-TIMESTAMP": timestamp,
+          "X-OC-SIGN": signature,
+          "X-OC-RECV-WINDOW": "15000",
+          "X-OC-NONCE": randomUUID(),
+          ...(bodyText ? { "content-type": "application/json" } : {}),
+        },
+        body: bodyText || undefined,
+      });
+    } catch (err) {
+      if (attempt < MAX_RETRIES) {
+        const wait = retryDelay(attempt);
+        waited += wait;
+        recordDevex({
+          at: new Date().toISOString(),
+          kind: "rate_limit",
+          path: pathWithQuery,
+          status: 0,
+          ttfbMs: Date.now() - started,
+          backoffMs: wait,
+          recovered: false,
+          note: `retry ${attempt + 1} of ${MAX_RETRIES} after network error`,
+        });
+        await sleep(wait);
+        continue;
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Web3ApiError(0, message, null, 0);
+    }
     const ttfbMs = Date.now() - started;
-    if (res.status === 429 && attempt < 4) {
-      const wait = Math.min(8_000, 400 * 2 ** attempt);
+    if (shouldRetryHttp(res.status) && attempt < MAX_RETRIES) {
+      const wait = retryDelay(attempt);
       waited += wait;
       recordDevex({
         at: new Date().toISOString(),
         kind: "rate_limit",
         path: pathWithQuery,
-        status: 429,
+        status: res.status,
         ttfbMs,
         backoffMs: wait,
         recovered: false,
+        note: `retry ${attempt + 1} of ${MAX_RETRIES} after HTTP ${res.status}`,
       });
+      await res.text().catch(() => "");
       await sleep(wait);
       continue;
     }
@@ -90,7 +153,7 @@ export async function web3Fetch(
       status: res.status,
       ttfbMs,
       backoffMs: waited || undefined,
-      recovered: waited > 0 && res.status !== 429,
+      recovered: waited > 0 && res.ok,
     });
     let json: Record<string, unknown> = {};
     try {
@@ -108,6 +171,9 @@ export async function web3Fetch(
     return { data: json.data, raw: json, ms };
   }
   throw new Web3ApiError(429, "Rate limit persisted after backoff", null, 429);
+  } finally {
+    releaseSlot();
+  }
 }
 
 const CAPTURED = new Set([40102, 40365, 40366, 40367, 40368, 40369, 40370, 40374, 40375, 40401, 40441, 40462]);

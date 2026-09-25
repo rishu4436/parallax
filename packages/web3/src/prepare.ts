@@ -2,8 +2,11 @@ import { getAddress } from "viem";
 import {
   QUOTE_ASSETS,
   RouterReject,
+  WALLET_MISMATCH,
   assertBuildAllowed,
+  needsSignerQuote,
   quoteStillYoung,
+  signerMatchesQuote,
   type Intent,
   type Settings,
   type VenueQuote,
@@ -69,14 +72,25 @@ export async function prepareExecution(input: {
   }
 
   let quote = input.quote;
-  if (!quote.ok || !quote.quoteId || !quoteStillYoung(quote.quoteExpiresAt)) {
+  const signerBound = needsSignerQuote(quote);
+  const walletDrift = Boolean(quote.userWalletAddress) && !signerMatchesQuote(input.intent.wallet, quote.userWalletAddress);
+  // RFQ rails (Ondo always, bStocks whenever the route can bind a wallet) drop the
+  // display quoteId and re-quote atomically with the connected signer so /swap
+  // still sees a live 30s TTL.
+  if (signerBound || walletDrift || !quote.ok || !quote.quoteId || !quoteStillYoung(quote.quoteExpiresAt)) {
     const fresh = await requoteSameRail(input.intent, input.quote.wrapper.rail, input.intent.vendorLock || quote.vendorName);
     if (!fresh?.ok || !fresh.quoteId) {
+      if (fresh?.errorCode === 40367 || fresh?.errorCode === 40369) {
+        return { step: "rejected", message: fresh.errorText || `${fresh.errorCode} US hours` };
+      }
       return {
         step: "expired",
         message: fresh?.errorText || "That price is 30 seconds old. Requote.",
         quote: fresh ?? undefined,
       };
+    }
+    if (needsSignerQuote(fresh) && !signerMatchesQuote(input.intent.wallet, fresh.userWalletAddress)) {
+      return { step: "rejected", message: WALLET_MISMATCH };
     }
     quote = fresh;
   }

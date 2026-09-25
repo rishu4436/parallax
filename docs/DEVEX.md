@@ -1,90 +1,171 @@
-# DEVEX
+# PARALLAX developer experience
 
-Written while wiring PARALLAX to BSC mainnet on 22 Sep 2026. Cash session at the first quote run was regular, 12:05 America/New_York. Ondo’s public dynamic endpoint reported `openState: true`, `marketStatus: regular` for NVDAon at the same time. The Trading API never returned a price in this environment because no key was present.
+Written from live BSC mainnet calls. The clock on the successful book below is Thursday 24 Sep 2026, 13:21 America/New_York, regular session, US cash open. Chain id is 56. Base URL is `https://web3.binance.com/build`.
 
-## Time to first `/quote`
+## Time to first successful quote
 
-The first live call was an unauthenticated GET:
+Two secrets are required. `WEB3_API_KEY` alone is not enough. The gateway checks `X-OC-SIGN`, which is Base64 HMAC-SHA256 over the secret in `WEB3_API_SECRET`. PARALLAX reads both from the repo `.env` and refuses any chain id other than 56.
 
-`https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&fromTokenAddress=0x55d398326f99059fF775485246999027B3197955&toTokenAddress=0xc845b2894dbddd03858fd2d643b4ef725fe0849d&amount=10000000000000000000&userWalletAddress=0x0000000000000000000000000000000000000001`
+The prehash the server actually verifies is:
 
-HTTP 401, body:
+`timestamp + METHOD + /build + path + query + body`
+
+`timestamp` is an ISO-8601 string (`new Date().toISOString()`), not unix milliseconds. The path includes the `/build` prefix even though that prefix is also the host path. A signature over the path without `/build` is rejected before any vendor is contacted. The query string in the prehash has to be the exact string appended to the URL, including parameter order.
+
+Headers on every call:
+
+- `X-OC-APIKEY`
+- `X-OC-TIMESTAMP`
+- `X-OC-SIGN`
+- `X-OC-RECV-WINDOW: 15000`
+- `X-OC-NONCE` a UUID
+- `content-type: application/json` when there is a body
+
+The first live attempt in this environment, 22 Sep 2026, was an unsigned GET of `/api/v1/dex/aggregator/quote` for 10 USDT of NVDAx. HTTP 401, one round trip, well under a second. Body:
 
 ```json
 {"code":40101,"timestamp":1790092123948,"msg":"API Key is required","data":""}
 ```
 
-That round trip was a single request, well under a second. It is not a quote.
-
-`pnpm quote` then ran the real book: refresh multipliers from the public RWA list, quote NVDAB / NVDAon / NVDAx at 10, 50, and 500 USDT, and pull Friday’s cash close. Wall clock 4826 ms. The quote book itself was 3787 ms. Every rail came back `40101 API Key is required`. No price was filled in. Registry addresses matched the live list with zero mismatches. Friday cash close resolved from Yahoo’s daily chart as **2026-09-18 $222.27**.
-
-## Docs that were wrong or incomplete
-
-Authentication is not an API key header. [Authentication](https://web3.binance.com/en/dev-docs/authentication) requires `X-OC-APIKEY`, `X-OC-TIMESTAMP`, and `X-OC-SIGN`, where the signature is Base64 HMAC-SHA256 over `timestamp + METHOD + /build + path + query + body` using a secret. A hackathon brief that only says `WEB3_API_KEY` cannot call `/quote`. PARALLAX also reads `WEB3_API_SECRET`.
-
-The amount example on Get Aggregated Quote says `"1000000" = 1 USDT (decimals=6)`. That is Ethereum USDT. BSC USDT `0x55d398326f99059fF775485246999027B3197955`, USDC, and USD1 are all **18 decimals**, confirmed with `decimals()` on mainnet. A 6-decimal amount buys dust and looks like a broken price.
-
-The introduction says equity tokens always return `executionMode=RFQ`, then three paragraphs later says xStock is AMM `SWAP` and bStock is mixed LiquidMesh + PcsXRfq. Both statements are in the same page. The second one is the one that matches the product. Trust `executionMode` on the route, not the overview sentence.
-
-`POST /order/submit` is described in the flow as `{ order, requestId }`. The generated OpenAPI client (binance-web3-connector-python, 2026-09) takes `requestId`, `userSignature`, `vendor`, `quoteId`, `signingScheme`. `quoteId` on submit is `rfq.orderId` from `/swap`, not necessarily the `/quote` quoteId. `typedDataToSign` is documented as hex or a JSON string. There is no full EIP-712 fixture per vendor.
-
-`userWalletAddress` is optional in the schema and required for RFQ. Ondo without it fails the route. The failure mode is easy to misread as “market closed”.
-
-`/quote` error list includes 40367 and 40369, but the gateway answers 40101 before any vendor is contacted when the key is missing. You cannot tell a closed Ondo market from a missing key unless you read `code`.
-
-## Error bodies captured
-
-40101, live, all three NVDA rails, 22 Sep 2026:
+That is not a quote. A later signed call with the `/build` segment missing from the prehash returned HTTP 200-class business failure `40102` (the transport status varies; the body is what matters). Captured body:
 
 ```json
-{"code":40101,"timestamp":1790093110955,"msg":"API Key is required","data":""}
+{"msg":"Invalid signature","timestamp":1790095696233,"code":40102,"data":""}
 ```
 
-40367, 40369, 40401, and RFQ `FAILED` were not returned in this run. The clock was inside the regular cash session, so those codes were not the thing blocking the book. The client appends those codes, plus 40441 and 40462, to `docs/live-errors/errors.jsonl` with the full JSON body when they happen. Until a key is set, that file stays empty and the UI prints `40101 API Key is required` on the row.
+BSC USDT `0x55d398326f99059fF775485246999027B3197955` has 18 decimals. The amount example on Get Aggregated Quote (`"1000000"` = 1 USDT at 6 decimals) is the Ethereum USDT example. Sending that on BSC buys dust and looks like a broken price. PARALLAX sizes with `toBaseUnits` at 18.
 
-Known meanings from the error-code page, not from a live body:
+Once the prehash included `/build` and both secrets were set, `pnpm quote` (`tsx scripts/quote-nvda.ts`) produced a real book. Wall clock 3783 ms, of which the quote book was 3130 ms. No 429 fired, so the backoff path did not add wait. The registry check against `.../rwa/stock/detail/list/ai?type=1|2|3` matched every seeded address.
 
-| Code | Name | When |
+10 USDT buy, wallet `0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` (display-only fallback; it is not a signing wallet):
+
+- bStock NVDAB, LiquidMesh, executionMode SWAP, quoteId `73080a55a75b48cebbf5951e83c9b752`, $224.27 per share, about 0.0446 NVDAB out, slip 3 / 3 bps at $50 / $500, status OPEN
+- Ondo NVDAon, LiquidMesh, executionMode SWAP, quoteId `398e91061514402a8c462ee628e7b491`, $224.33 per share, about 0.0445 NVDAon out, slip 0 / 0, status OPEN
+- xStock NVDAx, no route, status HALTED
+
+Best executable print was NVDAB at $224.27. The gap the desk prints is `((onchainBestPrice - fridayClose) / fridayClose) * 100`. On this book that is `(224.27 - 222.27) / 222.27 * 100 = +0.90%`. Versus the prior close ($225.51 on 2026-09-23) it is `-0.55%`. Session open 2026-09-24 was $222.12.
+
+The introduction still says equity tokens always return `executionMode=RFQ`. This book did not. NVDAon came back LiquidMesh SWAP during a regular session. Trust `executionMode` on the route. PARALLAX still re-quotes Ondo and bStocks with the connected wallet before building an order, because a later route on those rails can be InchFusion, CowSwap, or PcsXRfq, and those fail if `userWalletAddress` is not the signer.
+
+## TradFi hydration (RWA Data API)
+
+Yahoo chart `interval=1d&range=1mo` and Stooq daily CSV still exist as fallbacks. The primary source is the signed Binance Web3 RWA Data API on the same `WEB3_API_BASE` as trading:
+
+| Call | Path | What it returns |
 | --- | --- | --- |
-| 40367 | ONDO_MARKET_STATE_NOT_TRADABLE | Ondo underlying cash market is closed or halted |
-| 40369 | BStock outside exchange hours | bStock window is shut |
-| 40401 | QUOTE_EXPIRED | `/swap` after the ~30s quote cache |
+| Get RWA Token Price | `GET /api/v1/dex/market/rwa/price?binanceChainId=56&tokenContractAddresses=addr,addr` | `tokenPrice` (on-chain USD) and `referencePrice` (per-share conversion of that on-chain price) |
+| Get RWA Underlying Market | `GET /api/v1/dex/market/rwa/underlying-market?binanceChainId=56&tokenContractAddress=addr` | `marketData.previousClose` / `open` / `lastPrice` / `referencePrice` for the cash underlying |
 
-## SWAP vs RFQ time sinks
+`referencePrice` on both payloads is documented as a per-share conversion of the on-chain token, not an official NYSE print. PARALLAX stores it on `book.referencePrice` and does **not** copy it onto `book.priorClose`. `book.priorClose` is `marketData.previousClose` (the last completed regular session). `book.fridayClose` is that same print when the last completed session *is* Friday (weekend and Monday open); otherwise the daily chart still supplies the Friday 16:00 ET bar. `hydrateCashPrints` merges the two so a Wednesday book can have Tuesday from RWA and Friday from the chart.
 
-- Building the prehash with the query string the client actually sent, including `/build`. A signature over the path without `/build` is 40102, which looks like a bad secret.
-- BSC decimals. The first mental model (6) would have quoted a billionth of a dollar.
-- Deciding the spender. `approveTarget` is informational. `/approve-transaction` with `vendor=<vendorName>` is what returns calldata, and the vendor is required for RFQ even when the sold token is USDT.
-- Not reusing `quoteId`. After 30 seconds the only legal move is a new `/quote`. Retrying submit uses the same `requestId`. A new `requestId` is a new order.
-- xStock does not enter the RFQ path. Treating NVDAx like NVDAon wastes a typed-data signature against an AMM router.
-- Simulation is `POST /pre-transaction/simulate` with `{ binanceChainId, evmTx: { from, to, value, data } }`. It is not `eth_call` and it is not available for RFQ. Showing a fake simulate line on an RFQ is worse than showing the quoted output and the TTL.
+The public wallet-direct dynamic snapshot (`.../rwa/dynamic/ai`) is the unsigned fallback when the signed Market API is down. It can carry `stockInfo.price` and, when present, `stockInfo.previousClose`.
 
-## Suffix mixups
+Gap on the hero, venue stack, weekend dock, and `pnpm quote`:
 
-`NVDA`, `NVDAB`, `NVDAon`, and `NVDAx` are four different strings and three contracts. Resolved 22 Sep 2026 from `.../rwa/stock/detail/list/ai?type=1|2|3`, chainId 56:
+```
+((onchainBestPrice - fridayClose) / fridayClose) * 100
+```
 
-| Symbol | Address |
-| --- | --- |
-| NVDAB | `0x02fca66c1d1afb4e2a7884261eb00f63598a7436` |
-| NVDAon | `0xa9ee28c80f960b889dfbd1902055218cba016f75` |
-| NVDAx | `0xc845b2894dbddd03858fd2d643b4ef725fe0849d` |
+`onchainBestPrice` is the best executable per-share quote, else the RWA `tokenPrice`. A missing Friday print renders "Friday ref unavailable". It never becomes `0`.
 
-The same shape holds for TSLA, AAPL, AMZN, MSFT, META, GOOGL, AMD, QQQ, SPY, CRCL. Multipliers are not 1.000 on several Ondo names (NVDAon was 1.0017152487959898). Comparing token price to the cash print without dividing by the multiplier invents a gap. `pnpm quote` checks the live list and prints `REGISTRY MISMATCH` if an address moved.
+## The 30-second TTL wall (error 40401)
 
-## Latency
+`/quote` caches `quoteId` for about 30 seconds. `GET /swap` after that returns `QUOTE_EXPIRED`, code `40401`. Catalog `Message` (this is the `msg` string): `Quote expired. Please request a new quote`. Endpoint: `/swap` only. HTTP status is 200; the body carries the business code. Envelope, matching the live 40374 sibling and the published Trading API error format:
 
-Quote book for three rails at three sizes: **3787 ms** end to end, dominated by serial-looking parallel fan-out against a gateway that rejected each call with 40101. A successful quote plus `/swap` plus simulate was not measured. Expect the happy path to add those two calls inside the 30 second TTL, so the UI prepares the unsigned transaction immediately on BUY instead of waiting for another human click.
+```json
+{"code":40401,"msg":"Quote expired. Please request a new quote","data":null,"timestamp":1718000000000,"success":false}
+```
 
-## Slip, $15 vs $500, after hours
+The `timestamp` in that block is the catalog example (`1718000000000`). This run stayed inside the window, so `40401` was not returned by the gateway. `captureError` appends the untouched JSON to `docs/live-errors/errors.jsonl` the moment it is. `freshExpiry` stamps every route with `Date.now() + 30_000` as soon as the quote bytes arrive, not when the modal opens.
 
-Not measured. Slip bps in the product are the change in per-share price between the trade size and the $50 and $500 quotes. With no key, both columns render `—`, not zero. After hours the interesting comparison is xStock (often still an AMM) against Ondo 40367 and bStock 40369. That table is the product. It needs a key to exist.
+What eats the window:
 
-## What to change in the developer platform
+- The book fans out a primary quote plus $50 and $500 slip quotes per rail. Those HMAC calls share a concurrency cap of 3 (`MAX_WEB3_IN_FLIGHT`) so a burst does not trip 429. The cap kept this book at 3130 ms, which leaves most of the 30 seconds.
+- HTTP 429 and any 50x (500–599) retry at most 3 times. Backoff is 350 ms, then 700 ms, then 1400 ms, plus up to 30 percent jitter. A thrown `fetch` is retried on the same schedule.
+- The human still has to read the price and open a wallet.
+- SWAP then needs `GET /swap` and `POST /pre-transaction/simulate` before the sign button enables.
+- RFQ skips simulate. It needs an EIP-712 signature, `POST /order/submit`, and a poll of `GET /order/{orderId}`.
 
-1. A hackathon quote credential, or a clearly documented unauthenticated quote, so a missing key is not the only thing a judge can see during a live demo. 40101 on an open cash session looks like the product is down.
-2. Put decimals next to the amount example, per chain. BSC USDT is 18. The current example is a foot-gun.
-3. One error object per rail inside HTTP 200 when some vendors quote and some are closed. Today a thrown 40367 and a thrown 40101 take the same client path only because we wrap each rail. The raw API fails the whole call.
-4. Publish one EIP-712 fixture for InchFusion, CowSwap, and PcsXRfq, and say which id `/order/submit` wants.
-5. Delete the sentence that says equity tokens always return RFQ, or scope it to Ondo.
-6. Add `fridayClose` to the RWA dynamic payload. `stockInfo.price` is the live cash print and is null off-session, so it cannot be the Friday reference. Builders are left scraping a chart vendor for the number the whole product is about.
-7. Say, in the quote reference, that `tradeFee` is USD and `estimateGasFee` is wei. Scoring “after gas” is a guess without that sentence.
+PARALLAX does not ask the user to click Build and then click Sign. BUY or SELL on an open rail calls prepare immediately. For a SWAP route that is still young and was quoted for this same wallet, prepare calls `/swap`, then `/pre-transaction/simulate` with `{ binanceChainId, evmTx: { from, to, value, data } }`, and only then opens the modal. `confirmGate` leaves SIGN disabled while simulate is pending or `FAILED`. A failed simulate is rewritten into a plain sentence (missing balance, missing BNB for gas, short allowance). The modal shows a conic countdown ring bound to the same 30 second stamp. At zero, SIGN drops out and REQUOTE / CANCEL remain.
+
+If `/swap` throws `40401`, prepare returns step `expired` with the text `40401 QUOTE_EXPIRED` instead of a stuck spinner. REQUOTE requests a new `/quote`. Retrying submit keeps the same `requestId`. A new `requestId` is a new order. `quoteId` on submit is `rfq.orderId` from `/swap` when that field is present, not blindly the `/quote` id.
+
+## RFQ parity and atomic re-quote
+
+RFQ display quotes may use the fallback wallet so the book can render before anyone connects. That quote must not be executed. Ondo **and** bStocks bind `/quote` to `userWalletAddress` (`needsSignerQuote`). xStock AMM does not. If an Ondo or bStock rail is selected and no browser wallet is connected, the gold control says `Connect Binance Web3 Wallet` and does not call prepare.
+
+When a wallet is connected and the user hits BUY or SELL on a signer-bound rail, prepare throws away the display `quoteId` and re-quotes that rail atomically with `userWalletAddress` set to the signer, then checks `signer.toLowerCase() === quote.userWalletAddress.toLowerCase()`. A mismatch aborts with `Quote wallet does not match the signer. Requoting.` and the client runs that re-quote once more. The same check runs again in the modal before `signTypedData`. The fresh `quoteId` is passed to `/swap` immediately so EIP-712 typed data is in the modal before the 30 second TTL dies.
+
+`executionMode` still decides the signing payload. Ondo SWAP (LiquidMesh, as in this book) goes through simulate then `signTransaction`. Ondo or bStock `executionMode=RFQ` goes through EIP-712 then `/order/submit`. The wallet constraint is the rail, not the badge.
+
+## Off-hours error handling
+
+Business errors from the trading API usually arrive as HTTP 200 with a non-zero `code`. Transport failures are different: missing key was HTTP 401, and rate limits are HTTP 429. A client that only branches on HTTP status will treat a closed Ondo market and a successful empty body as the same kind of event, or miss the closed market entirely.
+
+This run was inside the regular session, so codes `40367` and `40369` were not returned. NVDAB and NVDAon both quoted OPEN. The published catalog names them `ONDO_MARKET_STATE_NOT_TRADABLE` and `BSTOCK_INVALID_TRADING_TIME`. The `msg` field on sibling RWA errors is a sentence, not the constant name. Raw bodies, same envelope as the live 40374 capture below, catalog `Message` in `msg`:
+
+Ondo off-hours (`40367` `ONDO_MARKET_STATE_NOT_TRADABLE`):
+
+```json
+{"code":40367,"msg":"Current time is outside of trading hours","data":null,"timestamp":1718000000000,"success":false}
+```
+
+bStocks off-hours (`40369` `BSTOCK_INVALID_TRADING_TIME`):
+
+```json
+{"code":40369,"msg":"The BStock token's underlying stock exchange is currently closed (outside trading hours).","data":null,"timestamp":1718000000000,"success":false}
+```
+
+`timestamp` `1718000000000` is the catalog example, the same sentinel as 40401. `captureError` writes the untouched JSON to `docs/live-errors/errors.jsonl` the moment a live `40367` or `40369` arrives, including the server timestamp.
+
+The RWA error this book did return, NVDAx, captured 24 Sep 2026:
+
+```json
+{"code":40374,"msg":"Insufficient liquidity for a quote. Please decrease the transaction amount or try again later.","data":null,"timestamp":1790270492205,"success":false}
+```
+
+`statusFor` maps `40367` and `40369` to rail status `CLOSED` with the text `40367 US hours` or `40369 US hours`. `40374` maps to `HALTED` because it is a liquidity miss, not a clock. `CLOSED` and `HALTED` are row states. They are not thrown out of the quote fan-out, and they do not blank the other rails. In this book NVDAx was HALTED while NVDAB and NVDAon stayed OPEN and priced. The same isolation is what keeps the xStock AMM row on screen when Ondo or bStocks later comes back closed. The desk does not synthesize a price for a closed rail. The Friday and prior closes still render, and the hero gap uses the live BSC print when no route is executable.
+
+xStock is the AMM path (`executionMode=SWAP`, wrapper type 2). It does not follow the Ondo session clock. It can still be HALTED, as it was here, when no pool will quote the size. That is a different fact from "the cash market is shut," and the row says so.
+
+## SWAP versus RFQ
+
+Two architectures share `/quote` and then diverge. The 30 second `quoteId` is the only thing they have in common after that.
+
+**Synchronous EVM SWAP** (regular crypto, xStock AMM, bStock LiquidMesh, and the Ondo LiquidMesh print this session actually returned):
+
+```
+GET /quote  →  GET /swap  →  POST /pre-transaction/simulate  →  sign tx  →  POST /broadcast-transaction  →  receipt
+```
+
+1. `GET /quote` returns `quoteId`, amounts, `executionMode=SWAP`, and usually `approveTarget`.
+2. If the wallet allowance is short, `GET /approve-transaction` returns calldata. For an RFQ vendor the `vendor` query is required even when the sold token is USDT. The user signs an approve, it is broadcast, and the swap is quoted again.
+3. `GET /swap` returns `tx.to`, `tx.data`, `tx.value`.
+4. `POST /pre-transaction/simulate` runs that exact unsigned transaction. This is not `eth_call`, and it is not offered for RFQ. Showing a fake simulate line on an RFQ is worse than showing the quoted output and the TTL.
+5. The wallet signs the transaction. PARALLAX broadcasts the signed raw tx. The fill is a chain receipt. After sign, there is no server poll: the next fact is the hash.
+
+**Asynchronous EIP-712 RFQ** (Ondo InchFusion / CowSwap / PcsXRfq, bStock PcsXRfq):
+
+```
+GET /quote  →  GET /swap  →  signTypedData  →  POST /order/submit  →  GET /order/{orderId} loop
+```
+
+1. `GET /quote` must carry the signer as `userWalletAddress`. The fallback display wallet is illegal here. PARALLAX re-quotes atomically at click with the connected wallet so this step and the signature share an address.
+2. `GET /swap` returns `rfq.typedDataToSign`, `rfq.vendor`, and an order id. There is still no published EIP-712 fixture per vendor, so the client parses whatever JSON or hex string comes back. This call must land inside the 30 second TTL or it is `40401`.
+3. The wallet signs typed data. The signer has to be the same address as step 1. Nothing has hit the chain yet.
+4. `POST /order/submit` takes `requestId`, `userSignature`, `vendor`, `quoteId`, and an optional `signingScheme`. The documented `{ order, requestId }` shape does not match the generated client, which wants the signature and the vendor.
+5. `GET /order/{orderId}` is polled until `FILLED`, `FAILED`, `EXPIRED`, or `CANCELLED`. Intermediate states are `PENDING_VENDOR` and `PENDING_ONCHAIN`. A `FAILED` status is a fill result, not an application crash. The tape records it and the modal closes.
+
+The SWAP path is synchronous once the user signs: simulate already happened, broadcast either lands or reverts. The RFQ path is asynchronous after the signature. The signature is not a transaction. The only id that makes the poll mean anything is the one from `/swap`, captured inside the same 30 second window as the quote. Reusing a display `quoteId` that was fetched for the fallback wallet, or polling with the `/quote` id instead of `rfq.orderId`, produces a silent miss.
+
+`tradeFee` on a quote is USD. `estimateGasFee` is wei. Scoring "after gas" without that distinction invents a number. PARALLAX subtracts `tradeFee` converted at the quoted per-share price, and shows simulate balance changes for the signer when the SWAP simulation returns them.
+
+## What would make the platform easier to build on
+
+1. A sandbox with a clock. There is no way, during a regular session, to force `40367` or `40369` for a demo. A testnet or a header that freezes the vendor clock at Sunday 18:00 ET would let a judge see a CLOSED Ondo row next to an OPEN xStock row without waiting for the cash close. An unauthenticated quote credential would have saved the first day, which was only `40101`.
+
+2. One error schema across the aggregator and the RFQ market makers. Today a missing key is HTTP 401 with `code` `40101`, a bad signature is `40102` with fields in a different order, a closed market is HTTP 200 with `code` `40367`, and a rate limit is HTTP 429 with or without a JSON body. Return HTTP 200 and one object per rail when some vendors quote and some are closed, with the same field order (`code`, `msg`, `data`, `timestamp`, `success`). Publish the exact `msg` sentence next to the constant name. And delete, or scope, the sentence that says equity tokens always return RFQ. This book is the counterexample: NVDAon was LiquidMesh SWAP at 13:21 ET.
+
+3. A persistent RFQ intent. The 30 second `quoteId` dies while the user reads a simulation and confirms in the Binance wallet. A channel that accepts the intent once, refreshes the quote server-side until the signature arrives, and then binds that signature to the latest unseen quote would remove the requote race. Until that exists, builders will keep doing what PARALLAX does: re-quote at the moment of signing, simulate SWAP before the modal enables SIGN, and show the remaining seconds on the ring.
+
+Retries around the gateway are a local necessity, not a product feature. Outgoing calls to `WEB3_API_BASE` are queued at 3 in flight across every wrapper, slip quote, swap, and RWA price call. HTTP 429 and 50x retry at most 3 times. The waits are 350 ms, 700 ms, and 1400 ms, plus up to 30 percent jitter so a burst does not retry in lockstep. Network `fetch` failures use the same backoff. Each retry is appended to `.data/devex_metrics.json` with the status, time to first byte, and the backoff that was slept. This successful book did not need a retry.

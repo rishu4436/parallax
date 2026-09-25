@@ -1,6 +1,6 @@
 "use client";
 
-import { COPY, formatPct, formatPx, gapPct, getUnderlying, relativePct, shortYmd, wrapperList } from "@parallax/core";
+import { COPY, edgeBreakdown, formatPct, formatPx, gapPct, getUnderlying, relativePct, shortYmd, wrapperList } from "@parallax/core";
 import { activeBook, underlyingName, useParallax } from "@/lib/store";
 import { useMounted } from "@/lib/use-mounted";
 import { useAccount } from "wagmi";
@@ -20,6 +20,7 @@ export function Hero() {
   const livePrint = useParallax((s) => s.livePrint);
   const liveSymbol = useParallax((s) => s.liveSymbol);
   const stockReference = useParallax((s) => s.stockReference);
+  const usdt = useParallax((s) => s.usdt);
   const mounted = useMounted();
   const { isConnected } = useAccount();
   const underlying = getUnderlying(ticker);
@@ -59,6 +60,18 @@ export function Hero() {
   const headlinePx = quote?.ok ? primaryPx : frozen;
   const headlineLabel = quote?.ok ? primaryLabel : frozenLabel;
   const price = quote?.ok ? formatPx(quote.perShare) : livePrint ? formatPx(livePrint) : null;
+  const notional = Number(usdt) || 10;
+  const edge =
+    quote?.ok && headlinePx
+      ? edgeBreakdown({
+          perShare: quote.perShare,
+          reference: headlinePx,
+          slipBps: quote.slipBps50,
+          slipKnown: quote.slipKnown,
+          gasUsd: quote.gasUsd,
+          notionalUsd: notional,
+        })
+      : null;
   return (
     <div>
       <div className="flex items-end justify-between gap-4">
@@ -81,6 +94,14 @@ export function Hero() {
               </p>
             )}
             {oracleLine ? <p className="num mt-2 text-xs text-dim">{oracleLine}</p> : null}
+            {edge ? (
+              <p className={`num mt-4 text-sm tracking-[0.14em] ${edge.netPct >= 0 ? "text-up" : "text-down"}`}>
+                NET OPPORTUNITY {formatPct(edge.netPct)}
+                <span className="ml-2 text-[11px] tracking-normal text-dim">
+                  gross {formatPct(edge.grossPct)} − slip {edge.complete ? formatPct(edge.slipPct) : "—"} − gas {formatPct(edge.costPct)}
+                </span>
+              </p>
+            ) : null}
             <p className="num mt-2 text-xs text-dim">
               {others.length
                 ? others

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { readEnv } from "@parallax/config";
-import { cashSession, fetchCashPrints, fridayPrintFromCash, getUnderlying, weekendBrief, wrapperList, type HoldingGap } from "@parallax/core";
+import { cashSession, fridayPrintFromCash, getUnderlying, weekendBrief, wrapperList, type HoldingGap } from "@parallax/core";
 import {
   readArmed,
   readBeat,
@@ -15,7 +15,7 @@ import {
   spentTodayUsdt,
   writeFriday,
 } from "@parallax/core/persist";
-import { fetchMarketPrint, readBalances } from "@parallax/web3";
+import { fetchMarketPrint, hydrateCashPrints, readBalances } from "@parallax/web3";
 import { fail } from "@/lib/http";
 
 async function studioStatus(): Promise<{ live: boolean; address: string }> {
@@ -42,9 +42,12 @@ export async function GET(request: Request) {
     const ticker = new URL(request.url).searchParams.get("ticker") || "NVDA";
     const session = cashSession();
     let friday = readFriday()[ticker] ?? null;
-    if (!friday || friday.priorClose == null) {
-      const cash = await fetchCashPrints(ticker).catch(() => null);
-      const print = cash ? fridayPrintFromCash(ticker, cash) : null;
+    const cashStale = !friday || friday.priorClose == null || !(friday.close > 0) || Date.now() - friday.storedAt > 15 * 60 * 1000;
+    if (cashStale) {
+      const underlying = getUnderlying(ticker);
+      const wrappers = underlying ? wrapperList(underlying) : undefined;
+      const hydrated = await hydrateCashPrints(ticker, wrappers).catch(() => null);
+      const print = hydrated ? fridayPrintFromCash(ticker, hydrated.prints) : null;
       if (print) {
         friday = print;
         writeFriday(ticker, friday);

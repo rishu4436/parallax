@@ -15,9 +15,26 @@
         {
           "name": "OTEL_TRACES_EXPORTER",
           "value": "none"
+        },
+        {
+          "name": "OAUTH_TOKEN_URL",
+          "value": "https://bnbagent-654784950739.auth.us-east-1.amazoncognito.com/oauth2/token"
+        },
+        {
+          "name": "OAUTH_SCOPE",
+          "value": "bnbagent-seller/invoke"
         }
       ],
-      "runtimeVersion": "NODE_22"
+      "runtimeVersion": "NODE_22",
+      "authorizerType": "CUSTOM_JWT",
+      "authorizerConfiguration": {
+        "customJwtAuthorizer": {
+          "discoveryUrl": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_3xpFrCqDB/.well-known/openid-configuration",
+          "allowedClients": [
+            "1kd80le0sm54r9gvvs22uaul4l"
+          ]
+        }
+      }
     }
   ]
 }

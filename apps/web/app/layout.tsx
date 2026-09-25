@@ -9,7 +9,7 @@ const display = Instrument_Serif({ weight: "400", subsets: ["latin"], variable: 
 
 export const metadata: Metadata = {
   title: "PARALLAX",
-  description: "Cash freezes. BNB doesn’t. Trade the gap.",
+  description: "Intelligent trading and execution desk for tokenized stocks on BNB Smart Chain. Cash freezes. BNB doesn’t. Trade the gap.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

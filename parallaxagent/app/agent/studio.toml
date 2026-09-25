@@ -40,6 +40,7 @@ network = "bsc-mainnet"
 # zero-deposit default. `bag llm activate` creates the key with $0
 # allocation; switch to a paid model + `bag llm topup` only when you need it.
 initial_allocation_usd = 0
+key_hash = "1b7e6642d9b323b7bd22376e4564b97fcace3f6ee86a1d3bc3873bc65b9416c9"
 
 [llm.auto_renew]
 # hook auto-allocates from Pieverse Account Balance to the API key when Key
@@ -75,9 +76,14 @@ poll_interval_seconds = 30
 auto_settle = false                            # opt-in: detect dispute-window-elapsed → settle
 
 [storage]
-# Deliverables written to local disk (file://). Offline-dev only —
-# does NOT survive deploy. Path from STORAGE_LOCAL_PATH.
-kind = "local"
+# User-owned S3 deliverable storage. Objects are immutable and
+# keyed as deliverables/sha256/<content-hash>.json.
+kind = "s3"
+bucket = "parallax-agent-deliverables-654784950739"
+region = "us-east-1"
+key_prefix = "deliverables"
+credential_mode = "ambient"
+public_base_url = "https://parallax-agent-deliverables-654784950739.s3.us-east-1.amazonaws.com"
 
 
 [payments.b402_seller]
@@ -103,3 +109,23 @@ acknowledged_at = "2026-09-23T06:53:49Z"
 max_per_topup_usd = 1.0
 max_per_day_usd = 3.0
 max_per_month_usd = 15.0
+
+[deploy]
+iam_notice_accepted_at = "2026-09-25T06:45:55Z"
+iam_notice_version = 1
+last_deploy_at = "2026-09-25T06:49:40Z"
+provider = "aws"
+runtime_arn = "arn:aws:bedrock-agentcore:us-east-1:654784950739:runtime/parallaxagent-Uu1isS4H7B"
+invoke_url = "https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/arn%3Aaws%3Abedrock-agentcore%3Aus-east-1%3A654784950739%3Aruntime%2Fparallaxagent-Uu1isS4H7B/invocations?qualifier=DEFAULT"
+oauth_client_id = "1kd80le0sm54r9gvvs22uaul4l"
+oauth_discovery_url = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_3xpFrCqDB/.well-known/openid-configuration"
+packaging = "codezip"
+
+[identity]
+endpoint = "https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/arn%3Aaws%3Abedrock-agentcore%3Aus-east-1%3A654784950739%3Aruntime%2Fparallaxagent-Uu1isS4H7B/invocations?qualifier=DEFAULT"
+pending_endpoint = "https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/arn%3Aaws%3Abedrock-agentcore%3Aus-east-1%3A654784950739%3Aruntime%2Fparallaxagent-Uu1isS4H7B/invocations?qualifier=DEFAULT"
+pending_action = "update_pending"
+pending_at = "2026-09-25T07:01:35.566Z"
+pending_tx = "0x0a17c5d2cad2c662f933fb3080dc1b6c1fc26d10a828be9cbe6b805cb1877413"
+pending_reason = "update-endpoint tx pending"
+agent_id = 357564
