@@ -178,7 +178,7 @@ function applySlip(primary: VenueQuote[], ref: VenueQuote | undefined, fifty: Ve
   }
 }
 
-async function referencePrice(wrapper: Wrapper): Promise<number | null> {
+async function wrapperTokenPrice(wrapper: Wrapper): Promise<number | null> {
   const snap = await fetchDynamic(wrapper.address).catch(() => null);
   if (snap?.multiplier && snap.multiplier > 0) wrapper.multiplier = snap.multiplier;
   return snap?.price ?? null;
@@ -200,7 +200,7 @@ export async function quoteIntent(intent: Intent, opts?: { slip?: boolean; allow
       if (intent.side === "buy") return { wrapper, amount: usdtBase };
       const probe = await quoteOnce(wrapper, "buy", usdtBase, intent.wallet, stable);
       const mid = probe.quotes.find((q) => q.ok)?.mid;
-      const px = mid && mid > 0 ? mid : await referencePrice(wrapper);
+      const px = mid && mid > 0 ? mid : await wrapperTokenPrice(wrapper);
       if (!px || !(px > 0)) return { wrapper, amount: "", probeError: probe.quotes[0] };
       const tokens = Number(intent.usdt) / px;
       return { wrapper, amount: toBaseUnits(tokens.toFixed(8), wrapper.decimals) };
