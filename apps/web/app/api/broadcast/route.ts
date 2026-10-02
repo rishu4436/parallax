@@ -1,41 +1,59 @@
-import { findCommitmentByPassport, upsertTape, writeReceipt } from "@parallax/core/persist";
-import { broadcastEvm, getBroadcastOrders, getSwapHistory } from "@parallax/web3";
-import { issueReceipt, type TapeRow } from "@parallax/core";
+import { CommitmentError, issueReceipt, type TapeRow } from "@parallax/core";
+import { findPassport, requireSubmissionCommitment, upsertTape, writeReceipt } from "@parallax/core/persist";
+import { assertSignedEvm, broadcastEvm, getBroadcastOrders, getSwapHistory } from "@parallax/web3";
 import { fail, readJson } from "@/lib/http";
 
 export async function POST(request: Request) {
   try {
     const body = await readJson<{ signedTransaction: string; address: `0x${string}`; tape: TapeRow }>(request);
+    if (!body.tape.passportHash) throw new CommitmentError("PASSPORT_MISSING", "Broadcast requires an Execution Passport.");
+    const passport = findPassport(body.tape.passportHash);
+    if (!passport) throw new CommitmentError("PASSPORT_MISSING", "Execution Passport was not found.");
+    if (passport.state === "expired" || Date.now() >= passport.body.expiresAt) {
+      throw new CommitmentError("PASSPORT_EXPIRED", "That price is 30 seconds old. Requote.");
+    }
+    const commitment = requireSubmissionCommitment(passport.hash, body.tape.signingCommitmentHash);
+    if (hex(body.address) !== hex(passport.body.intent.wallet)) {
+      throw new CommitmentError("WRONG_SIGNER", "Broadcast address does not match the passport wallet.");
+    }
+    await assertSignedEvm({
+      signedTransaction: body.signedTransaction,
+      commitment,
+      passportHash: passport.hash,
+      expectedSigner: passport.body.intent.wallet,
+      expiresAt: passport.body.expiresAt,
+    });
     const sent = await broadcastEvm(body.signedTransaction, body.address);
     const data = (sent.data ?? {}) as { txHash?: string; orderId?: string };
-    const commitment = body.tape.passportHash ? findCommitmentByPassport(body.tape.passportHash) : undefined;
-    const receipt =
-      body.tape.passportHash
-        ? issueReceipt({
-            id: data.orderId || body.tape.id,
-            passportHash: body.tape.passportHash,
-            signingCommitmentHash: commitment?.hash ?? body.tape.signingCommitmentHash,
-            txHash: data.txHash,
-            orderId: data.orderId,
-            status: data.txHash ? "submitted" : "failed",
-            source: body.tape.source === "agent" ? "agentic" : "ui",
-          })
-        : undefined;
-    if (receipt) writeReceipt(receipt);
+    const receipt = issueReceipt({
+      id: data.orderId || body.tape.id,
+      passportHash: passport.hash,
+      signingCommitmentHash: commitment.hash,
+      txHash: data.txHash,
+      orderId: data.orderId,
+      status: data.txHash ? "submitted" : "failed",
+      source: body.tape.source === "agent" ? "agentic" : "ui",
+    });
+    writeReceipt(receipt);
     const row: TapeRow = {
       ...body.tape,
       status: data.txHash ? "submitted" : "failed",
       txHash: data.txHash,
       orderId: data.orderId,
       errorText: data.txHash ? undefined : "Broadcast returned no hash",
-      signingCommitmentHash: receipt?.signingCommitmentHash ?? commitment?.hash ?? body.tape.signingCommitmentHash,
-      receiptId: receipt?.id,
+      passportHash: passport.hash,
+      signingCommitmentHash: commitment.hash,
+      receiptId: receipt.id,
     };
     upsertTape(row);
     return Response.json({ ok: Boolean(data.txHash), txHash: data.txHash, orderId: data.orderId, receipt, raw: sent.raw });
   } catch (err) {
     return fail(err);
   }
+}
+
+function hex(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 export async function GET(request: Request) {

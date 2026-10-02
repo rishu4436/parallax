@@ -1,5 +1,5 @@
 import { readEnv } from "@parallax/config";
-import type { SigningCommitment } from "./commitment";
+import { CommitmentError, type SigningCommitment } from "./commitment";
 import { etParts } from "./session";
 import { refreshPassport, type ExecutionPassport } from "./passport";
 import { receiptStatusFromTape, updateReceipt, type ExecutionReceipt } from "./receipt";
@@ -7,7 +7,7 @@ import { getBackend } from "./store";
 import type { AgentBeat, AgentFill, ArmedStrategy, FridayPrint, Job, QueuedIntent, Settings, TapeRow } from "./types";
 import { RAILS } from "./types";
 
-export { storeInfo, resetStoreBackend, FileStore, DurableStore } from "./store";
+export { storeInfo, resetStoreBackend, FileStore, MemoryStore } from "./store";
 export type { StoreInfo, StoreKind } from "./store";
 
 function readJson<T>(name: string, fallback: T): T {
@@ -189,6 +189,19 @@ export function findCommitment(hash: string): SigningCommitment | undefined {
 
 export function findCommitmentByPassport(passportHash: string): SigningCommitment | undefined {
   return readCommitments().find((row) => row.passportHash === passportHash);
+}
+
+export function requireSubmissionCommitment(passportHash: string, claimed?: string): SigningCommitment {
+  if (claimed) {
+    const found = findCommitment(claimed);
+    if (!found || found.passportHash !== passportHash) {
+      throw new CommitmentError("WRONG_PAIR", "Signing commitment is bound to a different passport.");
+    }
+    return found;
+  }
+  const found = findCommitmentByPassport(passportHash);
+  if (!found) throw new CommitmentError("COMMITMENT_MISSING", "No signing commitment is stored for this passport.");
+  return found;
 }
 
 export function readReceipts(): ExecutionReceipt[] {

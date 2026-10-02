@@ -50,10 +50,10 @@ export const FileStore: StoreBackend = {
 };
 
 /**
- * Deployed/serverless backend. Process memory so Vercel is not treated as a durable disk.
- * Swap this object for a KV implementation without changing PassportStore / ExecutionStore.
+ * Process memory. Used on Vercel so the filesystem is not treated as durable.
+ * durable is false. A future KV or Postgres backend can take the name DurableStore.
  */
-export const DurableStore: StoreBackend = {
+export const MemoryStore: StoreBackend = {
   kind: "memory",
   durable: false,
   read<T>(name: string, fallback: T): T {
@@ -71,7 +71,7 @@ export const DurableStore: StoreBackend = {
 };
 
 export function getBackend(): StoreBackend {
-  if (!backend) backend = ephemeral() ? DurableStore : FileStore;
+  if (!backend) backend = ephemeral() ? MemoryStore : FileStore;
   return backend;
 }
 

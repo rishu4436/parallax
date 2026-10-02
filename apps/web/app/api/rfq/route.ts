@@ -1,6 +1,6 @@
-import { findCommitmentByPassport, upsertTape, writeReceipt } from "@parallax/core/persist";
-import { getRfqOrder, submitRfq } from "@parallax/web3";
-import { issueReceipt, type TapeRow } from "@parallax/core";
+import { CommitmentError, issueReceipt, type TapeRow } from "@parallax/core";
+import { findPassport, requireSubmissionCommitment, upsertTape, writeReceipt } from "@parallax/core/persist";
+import { assertSignedRfq, getRfqOrder, submitRfq } from "@parallax/web3";
 import { fail, readJson } from "@/lib/http";
 
 export async function POST(request: Request) {
@@ -11,8 +11,24 @@ export async function POST(request: Request) {
       vendor: string;
       quoteId: string;
       signingScheme?: string;
+      typedData: string;
       tape: TapeRow;
     }>(request);
+    if (!body.tape.passportHash) throw new CommitmentError("PASSPORT_MISSING", "RFQ submit requires an Execution Passport.");
+    const passport = findPassport(body.tape.passportHash);
+    if (!passport) throw new CommitmentError("PASSPORT_MISSING", "Execution Passport was not found.");
+    if (passport.state === "expired" || Date.now() >= passport.body.expiresAt) {
+      throw new CommitmentError("PASSPORT_EXPIRED", "That price is 30 seconds old. Requote.");
+    }
+    const commitment = requireSubmissionCommitment(passport.hash, body.tape.signingCommitmentHash);
+    await assertSignedRfq({
+      signature: body.userSignature,
+      typedData: body.typedData,
+      commitment,
+      passportHash: passport.hash,
+      expectedSigner: passport.body.intent.wallet,
+      expiresAt: passport.body.expiresAt,
+    });
     const sent = await submitRfq({
       requestId: body.requestId,
       userSignature: body.userSignature,
@@ -21,25 +37,22 @@ export async function POST(request: Request) {
       signingScheme: body.signingScheme,
     });
     const data = (sent.data ?? {}) as { orderId?: string; status?: string };
-    const commitment = body.tape.passportHash ? findCommitmentByPassport(body.tape.passportHash) : undefined;
-    const receipt =
-      body.tape.passportHash
-        ? issueReceipt({
-            id: data.orderId || body.requestId,
-            passportHash: body.tape.passportHash,
-            signingCommitmentHash: commitment?.hash ?? body.tape.signingCommitmentHash,
-            orderId: data.orderId,
-            status: "submitted",
-            source: body.tape.source === "agent" ? "agentic" : "ui",
-          })
-        : undefined;
-    if (receipt) writeReceipt(receipt);
+    const receipt = issueReceipt({
+      id: data.orderId || body.requestId,
+      passportHash: passport.hash,
+      signingCommitmentHash: commitment.hash,
+      orderId: data.orderId,
+      status: "submitted",
+      source: body.tape.source === "agent" ? "agentic" : "ui",
+    });
+    writeReceipt(receipt);
     upsertTape({
       ...body.tape,
       status: data.status || "submitted",
       orderId: data.orderId,
-      signingCommitmentHash: receipt?.signingCommitmentHash ?? commitment?.hash ?? body.tape.signingCommitmentHash,
-      receiptId: receipt?.id,
+      passportHash: passport.hash,
+      signingCommitmentHash: commitment.hash,
+      receiptId: receipt.id,
     });
     return Response.json({ ok: true, orderId: data.orderId, status: data.status, receipt, raw: sent.raw });
   } catch (err) {

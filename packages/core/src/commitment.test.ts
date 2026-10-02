@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  checkEip712Submission,
+  checkEvmSubmission,
   commitAgenticSwap,
   commitEip712,
   commitEvmTx,
   commitFromPrepare,
+  type EvmCommitInput,
 } from "./commitment";
 import { QUOTE_ASSETS } from "./registry";
 
@@ -97,14 +100,172 @@ test("commitFromPrepare hashes RFQ typed data", () => {
   assert.equal(commitment?.scheme, "EIP712_RFQ");
 });
 
-test("commitFromPrepare ignores approve", () => {
-  assert.equal(
-    commitFromPrepare(PASSPORT, {
-      step: "approve",
-      tx: { from: "0x1", to: "0x2", value: "0", data: "0xaa" },
-    }),
-    null,
-  );
+test("commitFromPrepare hashes an approve tx the same way as a swap", () => {
+  const commitment = commitFromPrepare(PASSPORT, {
+    step: "approve",
+    tx: { from: "0x1", to: "0x2", value: "0", data: "0xaa", gas: "21000" },
+  });
+  assert.equal(commitment?.scheme, "EVM_TX");
+  assert.equal(JSON.parse(commitment?.canonical || "{}").gasLimit, "21000");
+});
+
+const FROM = "0xabcdef0000000000000000000000000000000001";
+const TO = "0x1111111111111111111111111111111111111111";
+
+function evm(partial: Partial<EvmCommitInput> = {}): EvmCommitInput {
+  return {
+    passportHash: PASSPORT,
+    chainId: 56,
+    from: FROM,
+    to: TO,
+    value: "1",
+    data: "0xdeadbeef",
+    nonce: "7",
+    gasLimit: "21000",
+    gasPrice: "1000000000",
+    transactionType: "legacy",
+    ...partial,
+  };
+}
+
+test("nonce and fee fields change the execution payload hash", () => {
+  const base = commitEvmTx(evm());
+  assert.notEqual(base.hash, commitEvmTx(evm({ nonce: "8" })).hash);
+  assert.notEqual(base.hash, commitEvmTx(evm({ gasPrice: "2" })).hash);
+  assert.equal(JSON.parse(base.canonical).nonce, "7");
+  assert.equal(JSON.parse(base.canonical).gasLimit, "21000");
+});
+
+test("matching execution payload is accepted", () => {
+  const commitment = commitEvmTx(evm());
+  const verdict = checkEvmSubmission({
+    commitment,
+    passportHash: PASSPORT,
+    tx: evm(),
+    expectedSigner: FROM,
+    expiresAt: 10_000,
+    now: 1_000,
+  });
+  assert.equal(verdict.ok, true);
+});
+
+test("modified calldata is rejected", () => {
+  const commitment = commitEvmTx(evm());
+  const verdict = checkEvmSubmission({ commitment, passportHash: PASSPORT, tx: evm({ data: "0xbb" }), expectedSigner: FROM });
+  assert.equal(verdict.ok, false);
+  if (!verdict.ok) assert.equal(verdict.code, "COMMITMENT_MISMATCH");
+});
+
+test("modified recipient is rejected", () => {
+  const commitment = commitEvmTx(evm());
+  const verdict = checkEvmSubmission({
+    commitment,
+    passportHash: PASSPORT,
+    tx: evm({ to: "0x2222222222222222222222222222222222222222" }),
+    expectedSigner: FROM,
+  });
+  assert.equal(verdict.ok, false);
+  if (!verdict.ok) assert.equal(verdict.code, "COMMITMENT_MISMATCH");
+});
+
+test("modified amount is rejected", () => {
+  const commitment = commitEvmTx(evm());
+  const verdict = checkEvmSubmission({ commitment, passportHash: PASSPORT, tx: evm({ value: "2" }), expectedSigner: FROM });
+  assert.equal(verdict.ok, false);
+  if (!verdict.ok) assert.equal(verdict.code, "COMMITMENT_MISMATCH");
+});
+
+test("modified chain is rejected", () => {
+  const commitment = commitEvmTx(evm());
+  const verdict = checkEvmSubmission({ commitment, passportHash: PASSPORT, tx: evm({ chainId: 1 }), expectedSigner: FROM });
+  assert.equal(verdict.ok, false);
+  if (!verdict.ok) assert.equal(verdict.code, "COMMITMENT_MISMATCH");
+});
+
+test("wrong signer is rejected", () => {
+  const commitment = commitEvmTx(evm());
+  const verdict = checkEvmSubmission({
+    commitment,
+    passportHash: PASSPORT,
+    tx: evm({ from: "0x9999999999999999999999999999999999999999" }),
+    expectedSigner: FROM,
+  });
+  assert.equal(verdict.ok, false);
+  if (!verdict.ok) assert.equal(verdict.code, "WRONG_SIGNER");
+});
+
+test("expired passport is rejected", () => {
+  const commitment = commitEvmTx(evm());
+  const verdict = checkEvmSubmission({
+    commitment,
+    passportHash: PASSPORT,
+    tx: evm(),
+    expectedSigner: FROM,
+    expiresAt: 1_000,
+    now: 1_000,
+  });
+  assert.equal(verdict.ok, false);
+  if (!verdict.ok) assert.equal(verdict.code, "PASSPORT_EXPIRED");
+});
+
+test("wrong passport and commitment pair is rejected", () => {
+  const commitment = commitEvmTx(evm({ passportHash: "b".repeat(64) }));
+  const verdict = checkEvmSubmission({ commitment, passportHash: PASSPORT, tx: evm(), expectedSigner: FROM });
+  assert.equal(verdict.ok, false);
+  if (!verdict.ok) assert.equal(verdict.code, "WRONG_PAIR");
+});
+
+test("modified RFQ typed data is a different commitment", () => {
+  const typed = {
+    passportHash: PASSPORT,
+    domain: { name: "Ondo", chainId: 56 },
+    types: { Order: [{ name: "maker", type: "address" }] },
+    primaryType: "Order",
+    message: { maker: FROM },
+  };
+  const original = commitEip712(typed);
+  const modified = commitEip712({ ...typed, message: { maker: "0x9999999999999999999999999999999999999999" } });
+  assert.notEqual(original.hash, modified.hash);
+  const verdict = checkEip712Submission({
+    commitment: original,
+    passportHash: PASSPORT,
+    expectedSigner: FROM,
+    recoveredSigner: FROM,
+    signedStoredTypedData: true,
+    submitted: {
+      domain: typed.domain,
+      types: typed.types,
+      primaryType: typed.primaryType,
+      message: { maker: "0x9999999999999999999999999999999999999999" },
+    },
+  });
+  assert.equal(verdict.ok, false);
+  if (!verdict.ok) assert.equal(verdict.code, "COMMITMENT_MISMATCH");
+});
+
+test("RFQ wrong signer is rejected", () => {
+  const commitment = commitEip712({
+    passportHash: PASSPORT,
+    domain: { name: "Ondo", chainId: 56 },
+    types: { Order: [{ name: "maker", type: "address" }] },
+    primaryType: "Order",
+    message: { maker: FROM },
+  });
+  const verdict = checkEip712Submission({
+    commitment,
+    passportHash: PASSPORT,
+    expectedSigner: FROM,
+    recoveredSigner: "0x9999999999999999999999999999999999999999",
+    signedStoredTypedData: true,
+    submitted: {
+      domain: { name: "Ondo", chainId: 56 },
+      types: { Order: [{ name: "maker", type: "address" }] },
+      primaryType: "Order",
+      message: { maker: FROM },
+    },
+  });
+  assert.equal(verdict.ok, false);
+  if (!verdict.ok) assert.equal(verdict.code, "WRONG_SIGNER");
 });
 
 test("AGENTIC_MARKET hashes the baw swap, not an EVM tx", () => {

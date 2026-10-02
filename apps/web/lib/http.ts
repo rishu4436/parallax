@@ -14,5 +14,6 @@ export function fail(err: unknown) {
     });
   }
   const message = err instanceof Error ? err.message : String(err);
-  return Response.json({ ok: false, message });
+  const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
+  return Response.json({ ok: false, ...(typeof code === "string" ? { code } : {}), message });
 }

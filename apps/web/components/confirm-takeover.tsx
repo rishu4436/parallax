@@ -214,6 +214,7 @@ export function ConfirmTakeover() {
             vendor: result.vendor,
             quoteId: result.quoteId,
             signingScheme: result.signingScheme,
+            typedData: result.typedData,
             tape: row,
           }),
         });

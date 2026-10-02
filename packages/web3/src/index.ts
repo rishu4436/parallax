@@ -7,3 +7,4 @@ export * from "./rwa";
 export * from "./book";
 export * from "./balances";
 export * from "./prepare";
+export * from "./integrity";
