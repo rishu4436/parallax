@@ -8,6 +8,8 @@ export interface MarketPrint {
   /** True when the RWA status is open, and when the status is missing. A missing flag must not look like a weekend close. */
   isMarketOpen: boolean;
   volume: number;
+  /** False when the kline read failed. `volume` is then not a measurement. */
+  volumeKnown: boolean;
   multiplier: number | null;
 }
 
@@ -20,11 +22,14 @@ export async function fetchMarketPrint(contractAddress: string): Promise<MarketP
   if (hit && Date.now() - hit.at < TTL_MS) return hit.snap;
   const dynamic = await fetchDynamic(contractAddress).catch(() => null);
   let volume = 0;
+  let volumeKnown = false;
   try {
     const candles = await fetchKline(contractAddress);
     volume = candles.reduce((sum, candle) => sum + (candle.v || 0), 0);
+    volumeKnown = true;
   } catch {
     volume = 0;
+    volumeKnown = false;
   }
   const multiplier = dynamic?.multiplier && dynamic.multiplier > 0 ? dynamic.multiplier : null;
   const tokenPrice = dynamic?.price ?? null;
@@ -35,6 +40,7 @@ export async function fetchMarketPrint(contractAddress: string): Promise<MarketP
     stockPrice: dynamic?.stockPrice ?? null,
     isMarketOpen: dynamic?.openState !== false,
     volume,
+    volumeKnown,
     multiplier,
   };
   cache.set(key, { at: Date.now(), snap });

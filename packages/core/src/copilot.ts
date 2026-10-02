@@ -82,7 +82,11 @@ function brief(answer: string, evidence: string[], action?: string): string {
 }
 
 function livePrice(row: OpportunityCard): string {
-  return row.perShare > 0 ? formatPx(row.perShare) : "—";
+  return row.perShare != null && row.perShare > 0 ? formatPx(row.perShare) : "—";
+}
+
+function shownPct(value: number | null): string {
+  return value == null ? "—" : formatPct(value);
 }
 
 export function answerCopilot(
@@ -102,13 +106,13 @@ export function answerCopilot(
     if (!row) {
       return { text: brief("Nothing is flagged.", ["An OPEN rail with a measured net edge would show here."]), cards: [] };
     }
-    const reference = row.reference > 0 ? `${row.referenceLabel} ${formatPx(row.reference)}` : "REFERENCE UNAVAILABLE";
+    const reference = row.reference != null && row.reference > 0 ? `${row.referenceLabel} ${formatPx(row.reference)}` : "REFERENCE UNAVAILABLE";
     return {
       text: brief(
-        `${row.symbol} is flagged on a ${formatPct(row.netPct)} net edge.`,
+        `${row.symbol} is flagged on a ${shownPct(row.netPct)} net edge.`,
         [
-          `Gross ${formatPct(row.grossPct)} versus ${reference}.`,
-          `Slip ${row.complete ? formatPct(row.slipPct) : "unknown"}. Gas ${formatPct(row.costPct)}.`,
+          `Gross ${shownPct(row.grossPct)} versus ${reference}.`,
+          `Slip ${row.complete && row.slipPct != null ? formatPct(row.slipPct) : "unknown"}. Gas ${shownPct(row.costPct)}.`,
         ],
         `Analyze ${row.symbol}`,
       ),
@@ -118,8 +122,8 @@ export function answerCopilot(
   }
   if (intent.type === "cheapest") {
     const ticker = intent.ticker || focus?.ticker;
-    const pool = open.filter((row) => (!ticker || row.ticker === ticker) && row.perShare > 0);
-    const row = [...pool].sort((a, b) => a.perShare - b.perShare || a.symbol.localeCompare(b.symbol))[0];
+    const pool = open.filter((row) => (!ticker || row.ticker === ticker) && row.perShare != null && row.perShare > 0);
+    const row = [...pool].sort((a, b) => (a.perShare ?? 0) - (b.perShare ?? 0) || a.symbol.localeCompare(b.symbol))[0];
     if (!row) return { text: brief("No executable rail.", ["NO EXECUTABLE QUOTE"]), cards: [] };
     const peers = cards.filter((item) => item.ticker === row.ticker);
     return {
@@ -134,8 +138,8 @@ export function answerCopilot(
   }
   if (intent.type === "reference") {
     const ticker = intent.ticker || focus?.ticker;
-    const row = cards.find((item) => (!ticker || item.ticker === ticker) && item.reference > 0);
-    if (!row) return { text: brief("Reference is unavailable.", ["REFERENCE UNAVAILABLE"]), cards: [] };
+    const row = cards.find((item) => (!ticker || item.ticker === ticker) && item.reference != null && item.reference > 0);
+    if (!row || row.reference == null) return { text: brief("Reference is unavailable.", ["REFERENCE UNAVAILABLE"]), cards: [] };
     return {
       text: brief(`${row.ticker} reference is ${formatPx(row.reference)}.`, [`${row.referenceLabel}.`], `Open ${row.ticker}`),
       cards: cards.filter((item) => item.ticker === row.ticker),
@@ -145,12 +149,12 @@ export function answerCopilot(
   if (intent.type === "changed") {
     const ticker = intent.ticker || focus?.ticker;
     const row = bestExecutable(open.filter((item) => !ticker || item.ticker === ticker));
-    if (!row || !(row.reference > 0) || !(row.perShare > 0)) {
+    if (!row || row.reference == null || row.reference <= 0 || row.perShare == null || row.perShare <= 0) {
       return { text: brief("No live comparison.", ["REFERENCE UNAVAILABLE"]), cards: [] };
     }
     return {
       text: brief(
-        `${row.symbol} is ${formatPct(row.grossPct)} versus ${row.referenceLabel}.`,
+        `${row.symbol} is ${shownPct(row.grossPct)} versus ${row.referenceLabel}.`,
         [`Tokenized price ${formatPx(row.perShare)}.`, `Reference ${formatPx(row.reference)}.`],
         `Analyze ${row.symbol}`,
       ),
@@ -161,10 +165,10 @@ export function answerCopilot(
   if (intent.type === "compare") {
     const rows = cards.filter((row) => row.ticker === intent.ticker);
     if (!rows.length) return { text: brief(`No live wrappers for ${intent.ticker}.`, ["NO EXECUTABLE QUOTE"]), cards: [] };
-    const reference = rows.find((row) => row.reference > 0);
+    const reference = rows.find((row) => row.reference != null && row.reference > 0);
     return {
       text: brief(
-        reference ? `${intent.ticker} reference is ${formatPx(reference.reference)}.` : `${intent.ticker} reference is unavailable.`,
+        reference && reference.reference != null ? `${intent.ticker} reference is ${formatPx(reference.reference)}.` : `${intent.ticker} reference is unavailable.`,
         rows.map((row) => `${row.symbol} ${livePrice(row)} ${row.status}`),
         `Analyze ${intent.ticker}`,
       ),
@@ -177,7 +181,7 @@ export function answerCopilot(
     const row = bestExecutable(open.filter((item) => !ticker || item.ticker === ticker));
     if (!row) return { text: "No OPEN rail to simulate.", cards: [] };
     return {
-      text: `Simulate ${row.symbol} at ${formatPx(row.perShare)}. SWAP rails run an on-chain simulation before SIGN. RFQ rails skip simulate and sign EIP-712.`,
+      text: `Simulate ${row.symbol} at ${row.perShare != null ? formatPx(row.perShare) : "—"}. SWAP rails run an on-chain simulation before SIGN. RFQ rails skip simulate and sign EIP-712.`,
       cards: [row],
       action: { ticker: row.ticker, rail: row.rail, simulate: true, side: "buy" },
     };
@@ -185,33 +189,38 @@ export function answerCopilot(
   if (intent.type === "buy") {
     const pool = open.filter((item) => !intent.ticker || item.ticker === intent.ticker);
     const row = intent.prefer === "liquidity"
-      ? [...pool].sort((a, b) => b.liquidity - a.liquidity)[0]
+      ? [...pool].sort((a, b) => (b.liquidity ?? -1) - (a.liquidity ?? -1))[0]
       : bestExecutable(pool);
     if (!row) return { text: "No OPEN rail to buy.", cards: [] };
+    const price = row.perShare != null ? formatPx(row.perShare) : "—";
+    const text = intent.prefer === "liquidity" && row.liquidity == null
+      ? `No measured liquidity on an OPEN rail. ${row.symbol} is OPEN at ${price}, net ${shownPct(row.netPct)}. Size ${intent.usdt} USDT. You still sign in the wallet.`
+      : `Highest-${intent.prefer === "liquidity" ? "liquidity" : "net-edge"} OPEN rail is ${row.symbol} at ${price}, net ${shownPct(row.netPct)}. Size ${intent.usdt} USDT. You still sign in the wallet.`;
     return {
-      text: `Highest-${intent.prefer === "liquidity" ? "liquidity" : "net-edge"} OPEN rail is ${row.symbol} at ${formatPx(row.perShare)}, net ${formatPct(row.netPct)}. Size ${intent.usdt} USDT. You still sign in the wallet.`,
+      text,
       cards: [row],
       action: { ticker: row.ticker, rail: row.rail, side: "buy", usdt: intent.usdt, simulate: true },
     };
   }
   if (intent.type === "low-slip") {
-    const rows = open.filter((row) => row.complete && row.slipPct <= intent.maxSlipPct);
+    const rows = open.filter((row) => row.complete && row.slipPct != null && row.slipPct <= intent.maxSlipPct);
     return {
       text: rows.length
-        ? `OPEN rails with measured slip ≤ ${formatPct(intent.maxSlipPct)}.\n${rows.map((row) => `${row.symbol} slip ${formatPct(row.slipPct)} net ${formatPct(row.netPct)}`).join("\n")}`
+        ? `OPEN rails with measured slip ≤ ${formatPct(intent.maxSlipPct)}.\n${rows.map((row) => `${row.symbol} slip ${shownPct(row.slipPct)} net ${shownPct(row.netPct)}`).join("\n")}`
         : `No OPEN rail has measured slip ≤ ${formatPct(intent.maxSlipPct)}.`,
       cards: rows,
     };
   }
   if (intent.type === "liquidity") {
-    const rows = [...cards.filter((row) => row.ticker === intent.ticker)].sort((a, b) => b.liquidity - a.liquidity);
+    const rows = [...cards.filter((row) => row.ticker === intent.ticker)].sort((a, b) => (b.liquidity ?? -1) - (a.liquidity ?? -1));
     const top = rows[0];
+    const volume = top?.liquidity;
     return {
-      text: top
-        ? `Highest quoted volume on ${intent.ticker} is ${top.symbol} at ${top.liquidity.toFixed(0)}. This is 24h kline volume, not a CEX book.`
+      text: top && volume != null
+        ? `Highest quoted volume on ${intent.ticker} is ${top.symbol} at ${volume.toFixed(0)}. This is 24h kline volume, not a CEX book.`
         : `No liquidity print for ${intent.ticker} in this scan.`,
       cards: rows.slice(0, 3),
-      action: top ? { ticker: intent.ticker, rail: top.rail, analyze: true } : undefined,
+      action: top && volume != null ? { ticker: intent.ticker, rail: top.rail, analyze: true } : undefined,
     };
   }
   if (intent.type === "strategy") {
@@ -222,18 +231,18 @@ export function answerCopilot(
     };
   }
   if (intent.type === "gap") {
-    const rows = open.filter((row) => Math.abs(row.grossPct) >= intent.minAbsPct);
+    const rows = open.filter((row) => row.grossPct != null && Math.abs(row.grossPct) >= intent.minAbsPct);
     return {
       text: rows.length
-        ? `OPEN rails ≥ ${formatPct(intent.minAbsPct)} away from the cash print.\n${rows.map((row) => `${row.symbol} ${formatPct(row.grossPct)} net ${formatPct(row.netPct)}`).join("\n")}`
+        ? `OPEN rails ≥ ${formatPct(intent.minAbsPct)} away from the cash print.\n${rows.map((row) => `${row.symbol} ${shownPct(row.grossPct)} net ${shownPct(row.netPct)}`).join("\n")}`
         : `No OPEN rail is ${formatPct(intent.minAbsPct)} away from its cash print in this scan.`,
       cards: rows,
     };
   }
-  const rows = open.filter((row) => Math.abs(row.netPct) >= intent.minAbsPct);
+  const rows = open.filter((row) => row.netPct != null && Math.abs(row.netPct) >= intent.minAbsPct);
   return {
     text: rows.length
-      ? `OPEN rails with |net edge| ≥ ${formatPct(intent.minAbsPct)}.\n${rows.map((row) => `${row.symbol} net ${formatPct(row.netPct)} (gross ${formatPct(row.grossPct)})`).join("\n")}`
+      ? `OPEN rails with |net edge| ≥ ${formatPct(intent.minAbsPct)}.\n${rows.map((row) => `${row.symbol} net ${shownPct(row.netPct)} (gross ${shownPct(row.grossPct)})`).join("\n")}`
       : `No OPEN rail clears ${formatPct(intent.minAbsPct)} net edge after slip and gas.`,
     cards: rows,
   };

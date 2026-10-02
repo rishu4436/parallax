@@ -43,16 +43,20 @@ export interface OpportunityCard {
   name: string;
   rail: Rail;
   symbol: string;
-  perShare: number;
-  reference: number;
+  /** Null when this rail has no usable quote. */
+  perShare: number | null;
+  /** Underlying reference. Independent of whether this rail quoted. Null when unknown. */
+  reference: number | null;
   referenceLabel: string;
-  grossPct: number;
-  slipPct: number;
-  costPct: number;
-  feePct: number;
-  netPct: number;
+  grossPct: number | null;
+  /** Null when slippage was not measured. A calculated zero is a measured zero. */
+  slipPct: number | null;
+  costPct: number | null;
+  feePct: number | null;
+  netPct: number | null;
   complete: boolean;
-  liquidity: number;
+  /** Null when volume was not observed. Zero means the print summed to zero. */
+  liquidity: number | null;
   status: RailStatus;
   vendor?: string;
   mode?: string;
@@ -67,15 +71,19 @@ export interface OpportunityCard {
   multiplier?: number;
 }
 
+/** Missing and non-finite economics sort after every real measurement, including zero. */
+function rankMagnitude(value: number | null): number {
+  return value == null || !Number.isFinite(value) ? -1 : Math.abs(value);
+}
+
 export function rankOpportunities(rows: OpportunityCard[]): OpportunityCard[] {
   return [...rows].sort((a, b) => {
     const aOpen = a.status === "OPEN" ? 1 : 0;
     const bOpen = b.status === "OPEN" ? 1 : 0;
     if (aOpen !== bOpen) return bOpen - aOpen;
-    const aAbs = Math.abs(a.netPct);
-    const bAbs = Math.abs(b.netPct);
-    if (Math.abs(aAbs - bAbs) > 1e-9) return bAbs - aAbs;
-    return b.liquidity - a.liquidity;
+    const net = rankMagnitude(b.netPct) - rankMagnitude(a.netPct);
+    if (Math.abs(net) > 1e-9) return net;
+    return rankMagnitude(b.liquidity) - rankMagnitude(a.liquidity);
   });
 }
 

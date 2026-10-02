@@ -19,7 +19,8 @@ export interface PortfolioQuote {
   rail: Rail;
   symbol: string;
   perShare: number;
-  reference: number;
+  /** Null when this scan had a token price and no underlying reference. */
+  reference: number | null;
   quoteExpiresAt?: number | null;
 }
 

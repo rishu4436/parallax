@@ -10,7 +10,7 @@ export function OpportunityEngine() {
   const setAnalyzeOpen = useParallax((s) => s.setAnalyzeOpen);
   const ticker = useParallax((s) => s.ticker);
 
-  const ranked = cards.filter((row) => row.status === "OPEN" && Math.abs(row.netPct) > 0);
+  const ranked = cards.filter((row) => row.status === "OPEN" && row.netPct != null && Math.abs(row.netPct) > 0);
   const shown = (ranked.length ? ranked : cards).slice(0, 6);
 
   return (
@@ -47,13 +47,13 @@ function CardBody({ card }: { card: OpportunityCard }) {
         <span className="text-sm">
           {card.ticker} <span className="text-dim">{card.symbol}</span>
         </span>
-        <span className={`num text-sm ${card.netPct >= 0 ? "text-up" : "text-down"}`}>{formatPct(card.netPct)}</span>
+        <span className={`num text-sm ${card.netPct == null ? "text-ink" : card.netPct >= 0 ? "text-up" : "text-down"}`}>{formatPct(card.netPct)}</span>
       </div>
       <p className="num mt-1 text-[11px] text-dim">
         {formatPx(card.perShare)} vs {formatPx(card.reference)} · gross {formatPct(card.grossPct)}
       </p>
       <p className="num mt-1 text-[11px] text-dim">
-        slip {card.complete ? formatPct(card.slipPct) : "—"} · gas {formatPct(card.costPct)} · liq {card.liquidity ? card.liquidity.toFixed(0) : "—"}
+        slip {card.complete ? formatPct(card.slipPct) : "—"} · gas {formatPct(card.costPct)} · liq {card.liquidity == null ? "—" : card.liquidity.toFixed(0)}
       </p>
       <p className="mt-2 text-[10px] tracking-[0.16em] text-gold">{card.status === "OPEN" ? "OPPORTUNITY DETECTED" : card.status}</p>
     </>

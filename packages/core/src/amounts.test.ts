@@ -6,19 +6,23 @@ test("formatPx uses two decimals above a dollar and four below", () => {
   assert.equal(formatPx(224.27), "$224.27");
   assert.equal(formatPx(0.04125), "$0.0413");
   assert.equal(formatPx(Number.NaN), "—");
+  assert.equal(formatPx(null), "—");
 });
 
 test("formatPct keeps a plus on gains and an em dash on missing", () => {
   assert.equal(formatPct(0.9), "+0.90%");
   assert.equal(formatPct(-0.55), "-0.55%");
   assert.equal(formatPct(Number.NaN), "—");
+  assert.equal(formatPct(null), "—");
+  assert.equal(formatPct(0), "0.00%");
 });
 
-test("desk number helpers print units and refuse zero liquidity", () => {
+test("desk number helpers print units and keep a measured zero", () => {
   assert.equal(formatUsdt(10), "10.00 USDT");
   assert.equal(formatBps(12.4), "12 bps");
   assert.equal(formatLiq(425820), "425,820");
-  assert.equal(formatLiq(0), "—");
+  assert.equal(formatLiq(0), "0");
+  assert.equal(formatLiq(null), "—");
 });
 
 test("quote freshness uses the 30s TTL clock", () => {

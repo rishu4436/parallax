@@ -125,7 +125,7 @@ function railFromCard(wrapper: MarketCatalogWrapper, card?: OpportunityCard): Ra
     tradeFeeUsd: card?.tradeFeeUsd ?? null,
     quoteExpiresAt: card?.quoteExpiresAt ?? null,
     multiplier: card?.multiplier && card.multiplier > 0 ? card.multiplier : wrapper.multiplier,
-    liquidity: card && card.liquidity > 0 ? card.liquidity : null,
+    liquidity: card?.liquidity ?? null,
     errorText: card?.errorText,
     vendor: card?.vendor,
   };
@@ -200,7 +200,7 @@ export function railsFromBooks(books: RailBook[], reference: number | null): Rai
       gasEstimateUsd: quote?.gasEstimateUsd ?? null,
       estimatedGasUnits: quote?.estimatedGasUnits || null,
       tradeFeeUsd: quote?.tradeFeeUsd ?? null,
-      quoteExpiresAt: quote?.quoteExpiresAt ?? null,
+      quoteExpiresAt: quote?.ok ? quote.quoteExpiresAt ?? null : null,
       multiplier: book.wrapper.multiplier,
       liquidity: null,
       errorText: book.errorText || quote?.errorText,

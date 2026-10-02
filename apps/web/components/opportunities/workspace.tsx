@@ -127,7 +127,7 @@ export function OpportunitiesWorkspace() {
 
   const book = selectedCard ? books.find((item) => item.wrapper.rail === selectedCard.rail) : undefined;
   const quote = book?.best;
-  const reference = selectedCard && selectedCard.reference > 0 ? selectedCard.reference : null;
+  const reference = selectedCard && seen(selectedCard.reference) ? selectedCard.reference : null;
   const policy =
     selectedCard && settings
       ? evaluatePolicy({
@@ -147,11 +147,11 @@ export function OpportunitiesWorkspace() {
           quote: quote?.wrapper.rail === selectedCard.rail ? quote : null,
           signer: wallet ?? null,
           reference: { price: reference, label: selectedCard.referenceLabel },
-          liquidity: selectedCard.liquidity > 0 ? selectedCard.liquidity : undefined,
+          liquidity: selectedCard.liquidity != null && selectedCard.liquidity > 0 ? selectedCard.liquidity : undefined,
           executionRequirement: selectedCard.mode === "RFQ" ? "RFQ" : "EVM_SIMULATION",
         })
       : null;
-  const lines = selectedCard ? flagReasons({ cashOpen, card: selectedCard.perShare > 0 && reference ? selectedCard : null, limits, sizeUsdt: Number(usdt) || 10 }) : [];
+  const lines = selectedCard ? flagReasons({ cashOpen, card: selectedCard, limits, sizeUsdt: Number(usdt) || 10 }) : [];
   const activity = selectedCard ? activityForTicker(tape, selectedCard.ticker) : [];
   const age = quoteAgeLabel(selectedCard?.quoteExpiresAt ?? null, now);
   const agent = agenticAvailability(agentStatus);
@@ -273,7 +273,7 @@ export function OpportunitiesWorkspace() {
                 <button type="button" className="min-h-11 w-full text-left" onClick={() => choose(row)}>
                   <span className="block text-ink">{row.name}</span>
                   <span className="num text-dim">
-                    {row.ticker} · {row.card.symbol} · {statusWord(row.card.status)} · net {row.card.perShare > 0 && row.card.reference > 0 ? pct(row.card.netPct) : "—"}
+                    {row.ticker} · {row.card.symbol} · {statusWord(row.card.status)} · net {seen(row.card.perShare) && seen(row.card.reference) ? pct(row.card.netPct) : "—"}
                   </span>
                 </button>
               </li>
@@ -300,9 +300,9 @@ export function OpportunitiesWorkspace() {
               ) : null}
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <Stat label="Reference" value={reference == null ? "REFERENCE UNAVAILABLE" : money(reference)} />
-                <Stat label="Tokenized" value={selectedCard.perShare > 0 ? money(selectedCard.perShare) : "—"} />
-                <Stat label="Gross gap" value={reference != null && selectedCard.perShare > 0 ? pct(selectedCard.grossPct) : "—"} />
-                <Stat label="Estimated net edge" value={reference != null && selectedCard.perShare > 0 ? pct(selectedCard.netPct) : "—"} />
+                <Stat label="Tokenized" value={seen(selectedCard.perShare) ? money(selectedCard.perShare) : "—"} />
+                <Stat label="Gross gap" value={reference != null && seen(selectedCard.perShare) ? pct(selectedCard.grossPct) : "—"} />
+                <Stat label="Estimated net edge" value={reference != null && seen(selectedCard.perShare) ? pct(selectedCard.netPct) : "—"} />
                 <Stat label="Quote" value={age.label} warn={age.stale} />
                 <Stat label="Rail" value={`${RAIL_LABEL[selectedCard.rail]} · ${selectedCard.symbol}`} />
                 <Stat label="Vendor" value={selectedCard.vendor || "—"} />
@@ -364,7 +364,7 @@ export function OpportunitiesWorkspace() {
                           {selected ? <span className="ml-2 text-[11px] tracking-[0.12em] text-gold">Selected</span> : null}
                         </span>
                         <span className="mt-1 block text-dim">
-                          {card ? statusWord(card.status) : "NO EXECUTABLE QUOTE"} · {card?.mode || "—"} · {card?.vendor || "—"} · {card && card.perShare > 0 ? money(card.perShare) : "—"} · gap {card && card.perShare > 0 && card.reference > 0 ? pct(card.grossPct) : "—"} · impact {card?.priceImpactPct == null ? "—" : pct(card.priceImpactPct)} · network {money(card?.networkFeeUsd)} · gas {card?.gasEstimateUsd == null ? card?.estimatedGasUnits || "—" : money(card.gasEstimateUsd)} · fee {money(card?.tradeFeeUsd)} · {railAge.label}
+                          {card ? statusWord(card.status) : "NO EXECUTABLE QUOTE"} · {card?.mode || "—"} · {card?.vendor || "—"} · {card && seen(card.perShare) ? money(card.perShare) : "—"} · gap {card && seen(card.perShare) && seen(card.reference) ? pct(card.grossPct) : "—"} · impact {card?.priceImpactPct == null ? "—" : pct(card.priceImpactPct)} · network {money(card?.networkFeeUsd)} · gas {card?.gasEstimateUsd == null ? card?.estimatedGasUnits || "—" : money(card.gasEstimateUsd)} · fee {money(card?.tradeFeeUsd)} · {railAge.label}
                         </span>
                         {card?.errorText ? <span className="mt-1 block text-down">{card.errorText}</span> : null}
                       </button>
@@ -467,6 +467,10 @@ function Select({ label, value, onChange, children }: { label: string; value: st
   );
 }
 
+function seen(value: number | null | undefined): value is number {
+  return value != null && Number.isFinite(value) && value > 0;
+}
+
 function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
     <div>
@@ -479,15 +483,15 @@ function Stat({ label, value, warn }: { label: string; value: string; warn?: boo
 function QueueRow({ row, now, selected, onSelect }: { row: OpportunityQueueRow; now: number; selected: boolean; onSelect: () => void }) {
   const card = row.card;
   const age = quoteAgeLabel(card.quoteExpiresAt ?? null, now);
-  const priced = card.perShare > 0 && card.reference > 0;
+  const priced = seen(card.perShare) && seen(card.reference);
   return (
     <TR selected={selected}>
       <TD>
         <span className="block">{row.name}</span>
         <span className="num text-dim">{row.ticker}</span>
       </TD>
-      <TD numeric>{card.reference > 0 ? money(card.reference) : "—"}</TD>
-      <TD numeric>{card.perShare > 0 ? money(card.perShare) : "—"}</TD>
+      <TD numeric>{seen(card.reference) ? money(card.reference) : "—"}</TD>
+      <TD numeric>{seen(card.perShare) ? money(card.perShare) : "—"}</TD>
       <TD numeric>{priced ? pct(card.grossPct) : "—"}</TD>
       <TD numeric>{card.complete ? pct(card.slipPct) : "—"}</TD>
       <TD numeric>{money(card.networkFeeUsd)}</TD>

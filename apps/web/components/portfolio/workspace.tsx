@@ -88,16 +88,19 @@ export function PortfolioWorkspace() {
 
   const quotes = useMemo<PortfolioQuote[]>(
     () =>
-      opportunities
-        .filter((card) => card.perShare > 0)
-        .map((card) => ({
-          ticker: card.ticker,
-          rail: card.rail,
-          symbol: card.symbol,
-          perShare: card.perShare,
-          reference: card.reference,
-          quoteExpiresAt: card.quoteExpiresAt,
-        })),
+      opportunities.flatMap((card) => {
+        if (card.perShare == null || !(card.perShare > 0)) return [];
+        return [
+          {
+            ticker: card.ticker,
+            rail: card.rail,
+            symbol: card.symbol,
+            perShare: card.perShare,
+            reference: card.reference,
+            quoteExpiresAt: card.quoteExpiresAt,
+          },
+        ];
+      }),
     [opportunities],
   );
 

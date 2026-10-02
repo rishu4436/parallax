@@ -264,9 +264,9 @@ export function DeveloperWorkspace() {
         <h2 id="rails" className="kicker">Tokenized stock diagnostics</h2>
         {!opportunities.length ? <p className="mt-3 text-sm text-dim">No scan is loaded in this session.</p> : null}
         <ul>
-          {opportunities.filter((card) => card.perShare > 0 || card.status !== "OPEN").slice(0, 12).map((card) => (
+          {opportunities.filter((card) => (card.perShare != null && card.perShare > 0) || card.status !== "OPEN").slice(0, 12).map((card) => (
             <li key={`${card.ticker}-${card.rail}`} className="border-t border-line py-2 text-sm">
-              {card.ticker} · {card.symbol} · {card.rail} · {card.status} · price {card.perShare > 0 ? card.perShare : "—"} · reference {card.reference > 0 ? card.reference : "—"} · impact {card.priceImpactPct ?? "—"} · network {card.networkFeeUsd ?? "—"} · gas {card.gasEstimateUsd ?? card.estimatedGasUnits ?? "—"} · fee {card.tradeFeeUsd ?? "—"}
+              {card.ticker} · {card.symbol} · {card.rail} · {card.status} · price {card.perShare != null && card.perShare > 0 ? card.perShare : "—"} · reference {card.reference != null && card.reference > 0 ? card.reference : "—"} · impact {card.priceImpactPct ?? "—"} · network {card.networkFeeUsd ?? "—"} · gas {card.gasEstimateUsd ?? card.estimatedGasUnits ?? "—"} · fee {card.tradeFeeUsd ?? "—"}
               {card.errorText ? ` · ${card.errorText}` : ""}
             </li>
           ))}

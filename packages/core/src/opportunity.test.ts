@@ -60,3 +60,53 @@ test("rank prefers OPEN rails then absolute net edge then liquidity", () => {
   assert.equal(ranked[1].symbol, "NVDAon");
   assert.equal(bestExecutable(ranked)?.symbol, "NVDAB");
 });
+
+test("a halted rail with no measured edge does not rank as a zero-edge trade", () => {
+  const card = (partial: Partial<OpportunityCard> & Pick<OpportunityCard, "symbol" | "status">): OpportunityCard => ({
+    ticker: "NVDA",
+    name: "NVIDIA",
+    rail: "xStock",
+    perShare: null,
+    reference: 230,
+    referenceLabel: "prior",
+    grossPct: null,
+    slipPct: null,
+    costPct: null,
+    feePct: null,
+    netPct: null,
+    complete: false,
+    liquidity: null,
+    ...partial,
+  });
+  const ranked = rankOpportunities([
+    card({ symbol: "NVDAx", status: "HALTED" }),
+    card({ symbol: "NVDAB", status: "OPEN", netPct: 0.2, perShare: 231, grossPct: 0.4, liquidity: 10, rail: "bStock" }),
+  ]);
+  assert.equal(ranked[0].symbol, "NVDAB");
+  assert.equal(ranked[1].netPct, null);
+});
+
+test("missing liquidity sorts after a measured zero and does not become that zero", () => {
+  const card = (partial: Partial<OpportunityCard> & Pick<OpportunityCard, "symbol" | "liquidity">): OpportunityCard => ({
+    ticker: "NVDA",
+    name: "NVIDIA",
+    rail: "bStock",
+    perShare: 180,
+    reference: 178,
+    referenceLabel: "prior",
+    grossPct: 1,
+    slipPct: 0.1,
+    costPct: 0,
+    feePct: 0,
+    netPct: 1,
+    complete: true,
+    status: "OPEN",
+    ...partial,
+  });
+  const ranked = rankOpportunities([
+    card({ symbol: "missing", liquidity: null }),
+    card({ symbol: "zero", liquidity: 0, rail: "ondo" }),
+    card({ symbol: "book", liquidity: 10, rail: "xStock" }),
+  ]);
+  assert.deepEqual(ranked.map((row) => row.symbol), ["book", "zero", "missing"]);
+});

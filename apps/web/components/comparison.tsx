@@ -70,10 +70,10 @@ export function Comparison() {
         })}
       </div>
       <dl className="mt-5 grid gap-2 text-xs text-dim sm:grid-cols-2">
-        <Stat label="Largest premium" value={largestPremium ? `${largestPremium.symbol} ${formatPct(largestPremium.gross || 0)}` : "—"} />
-        <Stat label="Largest discount" value={largestDiscount ? `${largestDiscount.symbol} ${formatPct(largestDiscount.gross || 0)}` : "—"} />
-        <Stat label="Lowest measured slip" value={lowestSlip ? `${lowestSlip.symbol} ${formatPct(lowestSlip.slipPct || 0)}` : "—"} />
-        <Stat label="Largest executable net" value={bestNet ? `${bestNet.symbol} ${formatPct(bestNet.net || 0)}` : "—"} />
+        <Stat label="Largest premium" value={largestPremium ? `${largestPremium.symbol} ${formatPct(largestPremium.gross)}` : "—"} />
+        <Stat label="Largest discount" value={largestDiscount ? `${largestDiscount.symbol} ${formatPct(largestDiscount.gross)}` : "—"} />
+        <Stat label="Lowest measured slip" value={lowestSlip ? `${lowestSlip.symbol} ${formatPct(lowestSlip.slipPct)}` : "—"} />
+        <Stat label="Largest executable net" value={bestNet ? `${bestNet.symbol} ${formatPct(bestNet.net)}` : "—"} />
       </dl>
     </section>
   );
@@ -110,7 +110,7 @@ function rowOf(book: RailBook, reference: number | null, notional: number) {
     perShare,
     gross,
     net: edge?.netPct ?? null,
-    slipPct: edge?.slipPct ?? null,
+    slipPct: edge && quote?.slipKnown ? edge.slipPct : null,
     slipKnown: quote?.slipKnown ?? false,
     open: book.status === "OPEN",
   };

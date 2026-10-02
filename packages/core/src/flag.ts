@@ -27,7 +27,7 @@ export function cardFromBook(
   reference: number,
   referenceLabel: string,
   notionalUsd: number,
-  liquidity = 0,
+  liquidity: number | null = null,
 ): OpportunityCard | null {
   const quote = book.best;
   if (!quote?.ok || !(reference > 0) || !(notionalUsd > 0)) return null;
@@ -49,9 +49,9 @@ export function cardFromBook(
     reference,
     referenceLabel,
     grossPct: edge.grossPct,
-    slipPct: edge.slipPct,
-    costPct: edge.costPct,
-    feePct: edge.feePct,
+    slipPct: edge.complete ? edge.slipPct : null,
+    costPct: quote.networkFeeUsd == null && !(quote.gasUsd > 0) ? null : edge.costPct,
+    feePct: null,
     netPct: edge.netPct,
     complete: edge.complete,
     liquidity,
@@ -65,9 +65,9 @@ export function cardFromBook(
 export function evaluateLimits(card: OpportunityCard, limits: RiskLimits, sizeUsdt: number): { pass: boolean; fails: string[] } {
   const fails: string[] = [];
   if (card.status !== "OPEN") fails.push(`Rail is ${card.status}.`);
-  if (Math.abs(card.netPct) < limits.minNetEdgePct) fails.push(`Net edge ${formatPct(card.netPct)} is below ${formatPct(limits.minNetEdgePct)}.`);
-  if (card.complete && card.slipPct > limits.maxSlipPct) fails.push(`Slip ${formatPct(card.slipPct)} is above ${formatPct(limits.maxSlipPct)}.`);
-  if (card.liquidity > 0 && card.liquidity < limits.minLiquidityUsd) fails.push(`Liquidity ${card.liquidity.toFixed(0)} is below ${limits.minLiquidityUsd}.`);
+  if (card.netPct != null && Math.abs(card.netPct) < limits.minNetEdgePct) fails.push(`Net edge ${formatPct(card.netPct)} is below ${formatPct(limits.minNetEdgePct)}.`);
+  if (card.complete && card.slipPct != null && card.slipPct > limits.maxSlipPct) fails.push(`Slip ${formatPct(card.slipPct)} is above ${formatPct(limits.maxSlipPct)}.`);
+  if (card.liquidity != null && card.liquidity > 0 && card.liquidity < limits.minLiquidityUsd) fails.push(`Liquidity ${card.liquidity.toFixed(0)} is below ${limits.minLiquidityUsd}.`);
   if (sizeUsdt > limits.maxTradeUsdt) fails.push(`Size ${sizeUsdt} USDT is above the ${limits.maxTradeUsdt} cap.`);
   return { pass: fails.length === 0, fails };
 }
@@ -86,19 +86,29 @@ export function flagReasons(input: {
     return lines;
   }
   const card = input.card;
-  lines.push(`${card.symbol} is ${formatPct(card.grossPct)} from ${card.referenceLabel} ${formatPx(card.reference)}.`);
-  if (card.liquidity > 0) {
+  if (card.perShare != null && card.reference != null && card.grossPct != null) {
+    lines.push(`${card.symbol} is ${formatPct(card.grossPct)} from ${card.referenceLabel} ${formatPx(card.reference)}.`);
+  } else if (card.reference != null) {
+    lines.push(`${card.symbol} has no quote. Reference ${formatPx(card.reference)} is still ${card.referenceLabel}.`);
+  } else {
+    lines.push(`${card.symbol} has no quote and no reference on this scan.`);
+  }
+  if (card.liquidity == null) {
+    lines.push("Liquidity was not observed. The scan did not invent a book size.");
+  } else if (card.liquidity > 0) {
     lines.push(
       card.liquidity >= input.limits.minLiquidityUsd
         ? `Liquidity ${card.liquidity.toFixed(0)} is above the ${input.limits.minLiquidityUsd} minimum.`
         : `Liquidity ${card.liquidity.toFixed(0)} is below the ${input.limits.minLiquidityUsd} minimum.`,
     );
   } else {
-    lines.push("Liquidity is not on this quote. The scan did not invent a book size.");
+    lines.push("Observed liquidity is 0.");
   }
-  lines.push(card.complete ? `Estimated slippage is ${formatPct(card.slipPct)}.` : "Slippage was not measured on this size, so it was not subtracted.");
-  lines.push(`Fees and gas reduce the gross gap by ${formatPct(card.costPct + card.feePct)}.`);
-  lines.push(`Estimated executable net edge is ${formatPct(card.netPct)}.`);
+  lines.push(card.complete && card.slipPct != null ? `Estimated slippage is ${formatPct(card.slipPct)}.` : "Slippage was not measured on this size, so it was not subtracted.");
+  if (card.costPct != null || card.feePct != null) {
+    lines.push(`Fees and gas reduce the gross gap by ${formatPct((card.costPct ?? 0) + (card.feePct ?? 0))}.`);
+  }
+  if (card.netPct != null) lines.push(`Estimated executable net edge is ${formatPct(card.netPct)}.`);
   const gate = evaluateLimits(card, input.limits, input.sizeUsdt);
   lines.push(gate.pass ? "The opportunity passes the configured strategy threshold." : gate.fails.join(" "));
   return lines;

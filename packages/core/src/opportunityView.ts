@@ -55,10 +55,14 @@ export function cardForRail(cards: OpportunityCard[], ticker: string, rail: Rail
   return cards.find((card) => card.ticker.toUpperCase() === ticker.toUpperCase() && card.rail === rail) ?? null;
 }
 
+function magnitude(value: number | null): number {
+  return value == null || !Number.isFinite(value) ? -1 : Math.abs(value);
+}
+
 function byNet(a: OpportunityCard, b: OpportunityCard): number {
-  const net = Math.abs(b.netPct) - Math.abs(a.netPct);
+  const net = magnitude(b.netPct) - magnitude(a.netPct);
   if (Math.abs(net) > 1e-9) return net;
-  const gap = Math.abs(b.grossPct) - Math.abs(a.grossPct);
+  const gap = magnitude(b.grossPct) - magnitude(a.grossPct);
   if (Math.abs(gap) > 1e-9) return gap;
   return a.ticker.localeCompare(b.ticker) || a.symbol.localeCompare(b.symbol);
 }
@@ -100,13 +104,13 @@ function focused(row: OpportunityQueueRow, rail: "all" | Rail | undefined): Oppo
 export function needsAttention(card: OpportunityCard, limits: RiskLimits, sizeUsdt: number, now = Date.now()): boolean {
   if (cardIsStale(card, now)) return true;
   if (card.status !== "OPEN") return true;
-  if (!(card.reference > 0) || !(card.perShare > 0)) return true;
+  if (card.reference == null || card.reference <= 0 || card.perShare == null || card.perShare <= 0) return true;
   if (!card.complete) return true;
   return !evaluateLimits(card, limits, sizeUsdt).pass;
 }
 
 export function isCrossRail(row: OpportunityQueueRow): boolean {
-  return row.rails.filter((card) => card.perShare > 0).length >= 2;
+  return row.rails.filter((card) => card.perShare != null && card.perShare > 0).length >= 2;
 }
 
 export function queryOpportunityQueue(rows: OpportunityQueueRow[], query: OpportunityQuery = {}): OpportunityQueueRow[] {
@@ -129,7 +133,7 @@ export function queryOpportunityQueue(rows: OpportunityQueueRow[], query: Opport
   next.sort((a, b) => {
     if (sort === "alpha") return a.ticker.localeCompare(b.ticker);
     if (sort === "gap") {
-      const gap = Math.abs(b.card.grossPct) - Math.abs(a.card.grossPct);
+      const gap = magnitude(b.card.grossPct) - magnitude(a.card.grossPct);
       if (Math.abs(gap) > 1e-9) return gap;
       return a.ticker.localeCompare(b.ticker);
     }
@@ -164,10 +168,10 @@ export function proposalFromOpportunity(input: {
     quote: input.quote ?? null,
     signer: input.wallet,
     reference: {
-      price: input.card.reference > 0 ? input.card.reference : null,
+      price: input.card.reference != null && input.card.reference > 0 ? input.card.reference : null,
       label: input.card.referenceLabel,
     },
-    liquidity: input.card.liquidity > 0 ? input.card.liquidity : undefined,
+    liquidity: input.card.liquidity != null && input.card.liquidity > 0 ? input.card.liquidity : undefined,
     executionRequirement: input.card.mode === "RFQ" ? "RFQ" : "EVM_SIMULATION",
   };
 }

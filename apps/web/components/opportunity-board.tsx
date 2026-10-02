@@ -37,7 +37,7 @@ export function OpportunityBoard() {
     : fridayClose
       ? `Friday close${fridayDate ? ` ${fridayDate}` : ""}`
       : "TradFi reference";
-  const liveCard = active && reference ? cardFromBook(ticker, underlyingName(ticker), active, reference, referenceLabel, Number(usdt) || 10, opportunities.find((row) => row.ticker === ticker && row.rail === active.wrapper.rail)?.liquidity || 0) : null;
+  const liveCard = active && reference ? cardFromBook(ticker, underlyingName(ticker), active, reference, referenceLabel, Number(usdt) || 10, opportunities.find((row) => row.ticker === ticker && row.rail === active.wrapper.rail)?.liquidity ?? null) : null;
   const card = demo ? demo.card : liveCard;
   const source = demo ? "DEMO DATA" : quoteAt ? `Binance Web3 quote · ${new Date(quoteAt).toISOString()}` : quoting ? "Quoting BSC" : "Waiting on a quote";
   const cashOpen = demo ? demo.cashOpen : session?.atmosphere === "open";
@@ -63,11 +63,11 @@ export function OpportunityBoard() {
       <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
         <Metric label="Reference price" value={card ? formatPx(card.reference) : "—"} />
         <Metric label="Tokenized price" value={card ? formatPx(card.perShare) : "—"} />
-        <Metric label="Gross gap" value={card ? formatPct(card.grossPct) : "—"} tone={card && card.grossPct >= 0 ? "up" : "down"} />
-        <Metric label="Estimated net edge" value={card ? formatPct(card.netPct) : "—"} tone={card && card.netPct >= 0 ? "up" : "down"} />
-        <Metric label="Liquidity" value={card?.liquidity ? card.liquidity.toFixed(0) : "—"} />
+        <Metric label="Gross gap" value={card ? formatPct(card.grossPct) : "—"} tone={card?.grossPct == null ? undefined : card.grossPct >= 0 ? "up" : "down"} />
+        <Metric label="Estimated net edge" value={card ? formatPct(card.netPct) : "—"} tone={card?.netPct == null ? undefined : card.netPct >= 0 ? "up" : "down"} />
+        <Metric label="Liquidity" value={card?.liquidity == null ? "—" : card.liquidity.toFixed(0)} />
         <Metric label="Est. slippage" value={card?.complete ? formatPct(card.slipPct) : "—"} />
-        <Metric label="Fees + gas" value={card ? formatPct(card.costPct + card.feePct) : "—"} />
+        <Metric label="Fees + gas" value={card && (card.costPct != null || card.feePct != null) ? formatPct((card.costPct ?? 0) + (card.feePct ?? 0)) : "—"} />
         <Metric
           label="Market status"
           value={`${cashOpen ? "US OPEN" : "US CLOSED"} · BSC OPEN`}

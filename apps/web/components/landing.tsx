@@ -14,8 +14,10 @@ export function Landing() {
   const tape = useParallax((s) => s.tape);
   const passport = useParallax((s) => s.passport);
   const quote = best?.best;
-  const reference = quote?.ok && opportunities.find((card) => card.symbol === best?.wrapper.symbol && card.reference > 0)?.reference;
-  const gap = quote?.ok && reference ? gapPct(quote.perShare, reference) : null;
+  const reference = quote?.ok
+    ? opportunities.find((card) => card.symbol === best?.wrapper.symbol && card.reference != null && card.reference > 0)?.reference
+    : null;
+  const gap = quote?.ok && reference != null && reference > 0 ? gapPct(quote.perShare, reference) : null;
   const openRails = new Set(opportunities.filter((card) => card.status === "OPEN").map((card) => `${card.ticker}:${card.rail}`)).size;
   const tracked = new Set(opportunities.map((card) => card.ticker)).size;
   const catalog = marketCatalog().length;
@@ -49,7 +51,7 @@ export function Landing() {
           <ExecutionSpine
             stages={[
               { label: "MARKET", value: quote?.ok ? "OPEN" : scanning ? "SCANNING" : "—" },
-              { label: "OPPORTUNITY", value: opportunities.some((card) => card.status === "OPEN" && card.perShare > 0) ? "FOUND" : opportunities.length ? "NONE OPEN" : "—" },
+              { label: "OPPORTUNITY", value: opportunities.some((card) => card.status === "OPEN" && card.perShare != null && card.perShare > 0) ? "FOUND" : opportunities.length ? "NONE OPEN" : "—" },
               { label: "POLICY", value: passport?.gate?.verdict || "—" },
               { label: "PASSPORT", value: passport?.state?.toUpperCase() || "—" },
               { label: "SIGN", value: passport?.state === "ready" ? "WAITING" : "—" },

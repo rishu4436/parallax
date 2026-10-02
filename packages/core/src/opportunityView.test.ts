@@ -134,7 +134,7 @@ test("missing prices and unknown slip do not become zero economics", () => {
     tradeFeeUsd: null,
     liquidity: 0,
   });
-  assert.equal(bare.reference > 0, false);
+  assert.equal(bare.reference != null && bare.reference > 0, false);
   assert.equal(bare.networkFeeUsd, null);
   assert.equal(bare.gasEstimateUsd, null);
   assert.equal(bare.tradeFeeUsd, null);

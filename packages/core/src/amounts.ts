@@ -34,14 +34,14 @@ export function formatUsd(n: number, digits = 2): string {
   });
 }
 
-export function formatPx(n: number): string {
-  if (!Number.isFinite(n)) return "—";
+export function formatPx(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
   const digits = n >= 1000 ? 2 : n >= 1 ? 2 : 4;
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 
-export function formatPct(n: number): string {
-  if (!Number.isFinite(n)) return "—";
+export function formatPct(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
   const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(2)}%`;
 }
@@ -63,8 +63,9 @@ export function formatBps(n: number): string {
   return `${Math.round(n)} bps`;
 }
 
-export function formatLiq(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return "—";
+export function formatLiq(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n) || n < 0) return "—";
+  if (n === 0) return "0";
   return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 

@@ -71,6 +71,7 @@ export function ConfirmTakeover() {
     result?.step === "sign-swap"
       ? result.step
       : undefined;
+  const scanLiquidity = opportunities.find((row) => row.ticker === ticker && row.rail === quote.wrapper.rail)?.liquidity;
   const decision = evaluatePolicy({
     source: confirm.actor === "agent" ? "agentic" : "ui",
     mode: "execute",
@@ -94,7 +95,7 @@ export function ConfirmTakeover() {
         : fridayClose && fridayClose > 0
           ? { price: fridayClose, label: "Friday cash close" }
           : { price: null, label: "unavailable" }),
-    liquidity: opportunities.find((row) => row.ticker === ticker && row.rail === quote.wrapper.rail)?.liquidity,
+    liquidity: scanLiquidity == null ? undefined : scanLiquidity,
     simulateStatus: result?.step === "sign-swap" ? result.simulateStatus : result?.step === "sign-rfq" ? "NONE" : "NONE",
     simulateReason: result?.step === "sign-swap" ? result.simulateReason : undefined,
     prepareStep,

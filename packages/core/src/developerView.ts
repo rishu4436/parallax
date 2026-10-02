@@ -225,7 +225,7 @@ export interface Finding {
   request: string;
 }
 
-export function integrationFindings(calls: ObservedCall[], cards: Array<{ gasEstimateUsd?: number | null; priceImpactPct?: number | null; networkFeeUsd?: number | null; liquidity?: number; slipKnown?: boolean; errorText?: string }> = []): Finding[] {
+export function integrationFindings(calls: ObservedCall[], cards: Array<{ gasEstimateUsd?: number | null; priceImpactPct?: number | null; networkFeeUsd?: number | null; liquidity?: number | null; slipKnown?: boolean; errorText?: string }> = []): Finding[] {
   const findings: Finding[] = [];
   const hours = calls.filter((call) => call.errorCode === 40367 || call.errorCode === 40369);
   if (hours.length) {

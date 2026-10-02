@@ -29,7 +29,7 @@ function card(partial: Partial<OpportunityCard> & Pick<OpportunityCard, "ticker"
     feePct: 0,
     netPct: 0,
     complete: false,
-    liquidity: 0,
+    liquidity: null,
     ...partial,
   };
 }
@@ -154,12 +154,24 @@ test("missing reference, fees, and prices stay null", () => {
       gasEstimateUsd: null,
       priceImpactPct: null,
       tradeFeeUsd: null,
-      liquidity: 0,
+      liquidity: null,
     }),
   ]);
   assert.equal(nvda.reference, null);
   assert.equal(nvda.gapPct, null);
   assert.equal(nvda.liquidity, null);
+  const [observedZero] = marketViews(catalog, [
+    card({
+      ticker: "NVDA",
+      rail: "xStock",
+      symbol: "NVDAx",
+      status: "OPEN",
+      perShare: 101,
+      reference: 100,
+      liquidity: 0,
+    }),
+  ]);
+  assert.equal(observedZero.liquidity, 0);
   assert.equal(nvda.best?.networkFeeUsd, null);
   assert.equal(nvda.best?.gasEstimateUsd, null);
   assert.equal(nvda.best?.priceImpactPct, null);

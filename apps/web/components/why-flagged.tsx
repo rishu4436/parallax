@@ -27,7 +27,7 @@ export function WhyFlagged() {
           reference,
           "cash print",
           Number(usdt) || 10,
-          opportunities.find((row) => row.ticker === ticker && row.rail === active.wrapper.rail)?.liquidity || 0,
+          opportunities.find((row) => row.ticker === ticker && row.rail === active.wrapper.rail)?.liquidity ?? null,
         )
       : null;
   const card = demo ? demo.card : liveCard;

@@ -108,7 +108,7 @@ export function ReplayWorkspace() {
             </div>
             <div>
               <dt className="text-dim">Gap</dt>
-              <dd className="num mt-1">{scenario.card.grossPct}%</dd>
+              <dd className="num mt-1">{scenario.card.grossPct == null ? "—" : `${scenario.card.grossPct}%`}</dd>
             </div>
             <div>
               <dt className="text-dim">Rail</dt>
@@ -116,7 +116,7 @@ export function ReplayWorkspace() {
             </div>
             <div>
               <dt className="text-dim">Liquidity</dt>
-              <dd className="num mt-1">{scenario.card.liquidity.toLocaleString("en-US")}</dd>
+              <dd className="num mt-1">{scenario.card.liquidity == null ? "—" : scenario.card.liquidity.toLocaleString("en-US")}</dd>
             </div>
             <div>
               <dt className="text-dim">Policy</dt>

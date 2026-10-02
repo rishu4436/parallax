@@ -52,20 +52,21 @@ async function scan(usdt: string) {
             : "RWA reference";
         for (const row of book.books) {
           const quote = row.best;
-          let liquidity = 0;
+          let liquidity: number | null = null;
           try {
             const print = await fetchMarketPrint(row.wrapper.address);
-            liquidity = print.volume || 0;
+            liquidity = print.volumeKnown ? print.volume : null;
           } catch {
-            liquidity = 0;
+            liquidity = null;
           }
+          const quoted = quote?.ok ? quote : null;
           const facts = {
-            quoteExpiresAt: quote?.quoteExpiresAt,
-            networkFeeUsd: quote?.networkFeeUsd ?? null,
-            gasEstimateUsd: quote?.gasEstimateUsd ?? null,
-            estimatedGasUnits: quote?.estimatedGasUnits ?? null,
-            priceImpactPct: quote?.priceImpactPct ?? null,
-            tradeFeeUsd: quote?.tradeFeeUsd ?? null,
+            ...(quoted ? { quoteExpiresAt: quoted.quoteExpiresAt } : {}),
+            networkFeeUsd: quoted?.networkFeeUsd ?? null,
+            gasEstimateUsd: quoted?.gasEstimateUsd ?? null,
+            estimatedGasUnits: quoted?.estimatedGasUnits ?? null,
+            priceImpactPct: quoted?.priceImpactPct ?? null,
+            tradeFeeUsd: quoted?.tradeFeeUsd ?? null,
             multiplier: row.wrapper.multiplier,
           };
           if (!quote?.ok || !reference || !(notional > 0)) {
@@ -74,14 +75,14 @@ async function scan(usdt: string) {
               name: underlying.name,
               rail: row.wrapper.rail,
               symbol: row.wrapper.symbol,
-              perShare: quote?.ok ? quote.perShare : 0,
-              reference: reference || 0,
+              perShare: quote?.ok && quote.perShare > 0 ? quote.perShare : null,
+              reference: reference && reference > 0 ? reference : null,
               referenceLabel,
-              grossPct: 0,
-              slipPct: 0,
-              costPct: 0,
-              feePct: 0,
-              netPct: 0,
+              grossPct: null,
+              slipPct: null,
+              costPct: null,
+              feePct: null,
+              netPct: null,
               complete: false,
               liquidity,
               status: row.status,
@@ -110,9 +111,9 @@ async function scan(usdt: string) {
             reference,
             referenceLabel,
             grossPct: edge.grossPct,
-            slipPct: edge.slipPct,
-            costPct: edge.costPct,
-            feePct: edge.feePct,
+            slipPct: edge.complete ? edge.slipPct : null,
+            costPct: quote.networkFeeUsd == null && !(quote.gasUsd > 0) ? null : edge.costPct,
+            feePct: null,
             netPct: edge.netPct,
             complete: edge.complete,
             liquidity,
