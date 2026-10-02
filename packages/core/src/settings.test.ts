@@ -12,6 +12,8 @@ test("parseSettings keeps a raised order cap", () => {
   assert.equal(next.orderCapUsdt, 50);
   assert.equal(next.dailyCapUsdt, 200);
   assert.deepEqual(next.allowedRails, ["ondo", "xStock"]);
+  assert.equal(next.minNetEdgePct, 0.5);
+  assert.equal(next.approvalRequired, true);
 });
 
 test("parseSettings rejects a blank or zero cap", () => {

@@ -17,8 +17,6 @@ export function VenueStack() {
   const fridayClose = useParallax((s) => s.fridayClose);
   const priorClose = useParallax((s) => s.priorClose);
   const quoting = useParallax((s) => s.quoting);
-  const usdt = useParallax((s) => s.usdt);
-  const setUsdt = useParallax((s) => s.setUsdt);
   const setAnalyzeOpen = useParallax((s) => s.setAnalyzeOpen);
   const analyzeOpen = useParallax((s) => s.analyzeOpen);
   const mounted = useMounted();
@@ -52,15 +50,6 @@ export function VenueStack() {
       ))}
       {!books.length ? <p className="text-sm text-dim">{quoting ? "Asking BSC for every wrapper." : "Name a company. We will price every BNB wrapper."}</p> : null}
       {line && !needsWallet ? <p className="num py-3 text-xs tracking-[0.14em] text-gold">{line}</p> : null}
-      <label className="mt-3 grid max-w-xs gap-1 text-xs text-dim">
-        Size USDT · your trades are not capped
-        <input
-          value={usdt}
-          inputMode="decimal"
-          onChange={(event) => setUsdt(event.target.value)}
-          className="num h-10 border border-line bg-transparent px-3 text-sm text-ink"
-        />
-      </label>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <button
           className={`h-12 border text-xs tracking-[0.18em] ${analyzeOpen ? "border-gold text-gold" : "border-line"}`}

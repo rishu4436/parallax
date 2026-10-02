@@ -30,7 +30,7 @@ export function SessionStrip() {
         </div>
         <p className="max-w-sm text-xs leading-relaxed text-dim">
           {afterHours
-            ? "Traditional trading is closed, but tokenized-stock liquidity remains available on-chain."
+            ? "ON-CHAIN TRADING REMAINS ACTIVE. Traditional hours froze; BNB wrappers can still quote."
             : "Cash is in regular session. On-chain wrappers still print independently."}
         </p>
       </div>
@@ -44,7 +44,7 @@ export function SessionStrip() {
         <span className={afterHours ? "text-gold" : ""}>16:01+ on-chain continues</span>
       </div>
       {afterHours ? (
-        <p className="mt-3 text-[11px] tracking-[0.16em] text-gold">After-hours opportunity state</p>
+        <p className="mt-3 text-[11px] tracking-[0.16em] text-gold">AFTER 16:00 ET · TOKENIZED-STOCK LIQUIDITY CONTINUES ON BSC</p>
       ) : marketOpen === false ? (
         <p className="mt-3 text-[11px] tracking-[0.16em] text-down">On-chain RWA flag is closed for this wrapper.</p>
       ) : null}

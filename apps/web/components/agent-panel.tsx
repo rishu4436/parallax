@@ -19,6 +19,7 @@ function isAgentType(id: StrategyPick): id is AgentStrategyType {
 
 export function AgentExecutionLog({ initial }: { initial: AgentFill[] }) {
   const [rows, setRows] = useState(initial);
+  const activity = useParallax((s) => s.activity);
   const live = useRef(false);
   useEffect(() => {
     if (!live.current) setRows(initial);
@@ -37,27 +38,42 @@ export function AgentExecutionLog({ initial }: { initial: AgentFill[] }) {
     return () => source.close();
   }, []);
 
+  const stamps = [
+    ...activity.map((row) => ({
+      id: `a-${row.at}-${row.text}`,
+      at: row.at,
+      gold: false,
+      demo: row.demo,
+      title: row.text,
+      detail: row.demo ? "DEMO DATA" : "",
+    })),
+    ...rows.map((row) => ({
+      id: row.id,
+      at: row.at,
+      gold: true,
+      demo: false,
+      title: `${row.side} ${row.usdt} USDT ${row.ticker}${row.spreadPct != null ? ` · ${formatPct(row.spreadPct)}` : ""}`,
+      detail: `${row.note}${row.gasUsd != null ? ` · gas ${formatPx(row.gasUsd)}` : ""} · x402 ${row.x402}`,
+    })),
+  ]
+    .sort((a, b) => b.at - a.at)
+    .slice(0, 14);
+
   return (
     <section>
       <h2 className="kicker">Agent log</h2>
-      {rows.length ? (
+      {stamps.length ? (
         <ul className="mt-3 space-y-2">
-          {rows.slice(0, 8).map((row) => (
-            <li key={row.id} className="border border-gold/50 px-3 py-3">
-              <p className="text-sm text-gold">
-                {row.side} {row.usdt} USDT {row.ticker}
-                {row.spreadPct != null ? ` · ${formatPct(row.spreadPct)}` : ""}
-              </p>
-              <p className="mt-1 text-xs text-dim">
-                {row.note}
-                {row.gasUsd != null ? ` · gas ${formatPx(row.gasUsd)}` : ""}
-                {` · x402 ${row.x402}`}
-              </p>
+          {stamps.map((row) => (
+            <li key={row.id} className={`border px-3 py-2 ${row.gold ? "border-gold/50" : "border-line"}`}>
+              <p className="num text-[10px] text-dim">{new Date(row.at).toISOString().slice(11, 19)}</p>
+              <p className={`text-sm ${row.gold ? "text-gold" : "text-ink"}`}>{row.title}</p>
+              {row.detail ? <p className={`mt-1 text-[11px] ${row.demo ? "text-gold" : "text-dim"}`}>{row.detail}</p> : null}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-3 text-sm text-dim">The agent has not broadcast a swap yet. Arm a strategy and the worker sends it from this machine.</p>
+        <p className="mt-3 text-sm text-dim">The agent has not broadcast a swap yet. Quotes and scans appear here as they land.</p>
       )}
     </section>
   );

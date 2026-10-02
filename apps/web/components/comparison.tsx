@@ -14,10 +14,23 @@ export function Comparison() {
   const stockReference = useParallax((s) => s.stockReference);
   const usdt = useParallax((s) => s.usdt);
   const lockRail = useParallax((s) => s.lockRail);
-  const reference = priorClose ?? fridayClose ?? stockReference;
-  const referenceLabel = priorClose ? "Reference / prior close" : fridayClose ? "Reference / Friday close" : "Reference";
+  const demo = useParallax((s) => s.demo);
+  const reference = demo ? demo.card.reference : priorClose ?? fridayClose ?? stockReference;
+  const referenceLabel = demo ? "DEMO reference" : priorClose ? "Reference / prior close" : fridayClose ? "Reference / Friday close" : "Reference";
   const notional = Number(usdt) || 10;
-  const rows = books.map((book) => rowOf(book, reference, notional));
+  const rows = demo
+    ? demo.wrappers.map((row) => ({
+        rail: row.rail,
+        symbol: row.symbol,
+        status: "OPEN" as const,
+        perShare: row.perShare,
+        gross: row.grossPct,
+        net: row.grossPct - 0.34,
+        slipPct: 0.18,
+        slipKnown: true,
+        open: true,
+      }))
+    : books.map((book) => rowOf(book, reference, notional));
   const open = rows.filter((row) => row.open && row.perShare != null);
   const largestPremium = [...open].sort((a, b) => (b.gross ?? 0) - (a.gross ?? 0))[0];
   const largestDiscount = [...open].sort((a, b) => (a.gross ?? 0) - (b.gross ?? 0))[0];
@@ -27,7 +40,7 @@ export function Comparison() {
 
   return (
     <section className="border-t border-line pt-6">
-      <p className="kicker">Wrapper comparison · {ticker}</p>
+      <p className="kicker">Wrapper comparison · {ticker}{demo ? " · DEMO DATA" : ""}</p>
       <p className="num mt-3 text-sm text-dim">
         {referenceLabel} {reference ? formatPx(reference) : "—"}
       </p>

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useAccount } from "wagmi";
-import { localClock } from "@parallax/core";
+import { DEMO_SCENARIOS, localClock } from "@parallax/core";
 import { CommandField } from "./command";
 import { Mark } from "./mark";
 import { useParallax } from "@/lib/store";
@@ -15,6 +15,8 @@ export function TopBar() {
   const view = useParallax((s) => s.view);
   const setView = useParallax((s) => s.setView);
   const setSettingsOpen = useParallax((s) => s.setSettingsOpen);
+  const demo = useParallax((s) => s.demo);
+  const setDemo = useParallax((s) => s.setDemo);
   const refreshDesk = useParallax((s) => s.refreshDesk);
   const refreshQuote = useParallax((s) => s.refreshQuote);
   const refreshScan = useParallax((s) => s.refreshScan);
@@ -74,6 +76,19 @@ export function TopBar() {
         <CommandField />
       </div>
       <div className="flex shrink-0 items-center gap-2">
+        <select
+          className={`hidden max-w-[9rem] bg-transparent text-[11px] tracking-[0.08em] sm:block ${demo ? "text-gold" : "text-dim"}`}
+          value={demo?.id || ""}
+          onChange={(event) => setDemo((event.target.value || null) as (typeof DEMO_SCENARIOS)[number]["id"] | null)}
+          aria-label="Demo scenario"
+        >
+          <option value="">Live quotes</option>
+          {DEMO_SCENARIOS.map((row) => (
+            <option key={row.id} value={row.id}>
+              DEMO · {row.label}
+            </option>
+          ))}
+        </select>
         <button className="hidden text-[11px] tracking-[0.16em] text-dim hover:text-gold sm:block" onClick={() => setSettingsOpen(true)}>
           Settings
         </button>

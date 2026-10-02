@@ -89,6 +89,10 @@ export interface Settings {
   dailyCapUsdt: number;
   allowedRails: Rail[];
   killSwitch: boolean;
+  minNetEdgePct: number;
+  maxSlipPct: number;
+  minLiquidityUsd: number;
+  approvalRequired: boolean;
 }
 
 export type JobType = "dca" | "flatten_earnings" | "weekend_cap" | "cheap_rail" | "gap_fade" | "open_print";

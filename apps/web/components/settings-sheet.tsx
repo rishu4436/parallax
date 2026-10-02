@@ -60,7 +60,13 @@ export function SettingsSheet() {
                   setError("At least one rail stays on.");
                   return;
                 }
-                const next: Settings = { orderCapUsdt, dailyCapUsdt, allowedRails: rails, killSwitch };
+                const next: Settings = {
+                  ...settings,
+                  orderCapUsdt,
+                  dailyCapUsdt,
+                  allowedRails: rails,
+                  killSwitch,
+                };
                 setSaving(true);
                 void save(next).then((message) => {
                   setSaving(false);

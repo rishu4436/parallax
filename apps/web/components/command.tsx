@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { COPY, listUnderlyings, parseCommand, wrapperList } from "@parallax/core";
+import { COPY, listUnderlyings, parseCommand, parseCopilot, wrapperList } from "@parallax/core";
 import { useParallax } from "@/lib/store";
 
 export function CommandField() {
@@ -39,7 +39,29 @@ export function CommandField() {
 
   async function run(raw = command) {
     const hit = parseCommand(raw);
-    if (!hit) return;
+    if (!hit) {
+      const intent = parseCopilot(raw);
+      if (intent.type === "help") return;
+      setView("trade");
+      const res = await fetch("/api/copilot", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: raw, cards: useParallax.getState().opportunities, focus: { ticker: useParallax.getState().ticker, netPct: null } }),
+      });
+      const body = (await res.json()) as {
+        action?: { ticker?: string; rail?: "bStock" | "ondo" | "xStock"; side?: "buy" | "sell"; usdt?: string; analyze?: boolean; simulate?: boolean };
+      };
+      if (body.action?.usdt) setUsdt(body.action.usdt);
+      if (body.action?.analyze) useParallax.getState().setAnalyzeOpen(true);
+      if (body.action?.ticker) await selectTicker(body.action.ticker, body.action.rail, body.action.side);
+      if (body.action?.simulate) {
+        const state = useParallax.getState();
+        const book = state.books.find((item) => item.wrapper.rail === body.action?.rail) || state.best;
+        if (book) await openConfirm(book, body.action.side || "buy");
+      }
+      setCommand("");
+      return;
+    }
     if (hit.type === "jump") {
       if (hit.target === "settings") setSettingsOpen(true);
       else if (hit.target === "strategies" || hit.target === "weekend") setView("jobs");
@@ -72,7 +94,7 @@ export function CommandField() {
         onKeyDown={(event) => {
           if (event.key === "Enter") void run();
         }}
-        placeholder="Name, ticker, or ‘buy 25 NVDA’"
+        placeholder="Name, ticker, ‘buy 25 NVDA’, or ‘compare NVDA’"
         className="h-10 w-full border-b border-line bg-transparent px-1 text-sm outline-none transition-colors duration-150 placeholder:text-dim focus:border-gold"
         aria-label="Command"
       />

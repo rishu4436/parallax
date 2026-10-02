@@ -33,6 +33,10 @@ export function defaultSettings(): Settings {
     dailyCapUsdt: env.dailyCapUsdt,
     allowedRails: [...RAILS],
     killSwitch: false,
+    minNetEdgePct: 0.5,
+    maxSlipPct: 0.5,
+    minLiquidityUsd: 100_000,
+    approvalRequired: true,
   };
 }
 

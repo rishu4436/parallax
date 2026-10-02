@@ -19,6 +19,9 @@ import {
   type OpportunityCard,
   type TapeRow,
   type VenueQuote,
+  DEMO_SCENARIOS,
+  type DemoScenario,
+  type DemoScenarioId,
 } from "@parallax/core";
 import type { BalanceReport, PrepareResult } from "@parallax/web3";
 
@@ -94,6 +97,8 @@ interface ParallaxState {
   armed: ArmedStrategy[];
   workerEnabled: boolean;
   fills: AgentFill[];
+  activity: Array<{ at: number; text: string; demo?: boolean }>;
+  demo: DemoScenario | null;
   wallet?: `0x${string}`;
   connectNonce: number;
   askConnect: () => void;
@@ -118,6 +123,8 @@ interface ParallaxState {
   pauseJob: (id: string, paused: boolean) => Promise<void>;
   pushTape: (row: TapeRow) => Promise<void>;
   loadCandles: (address: string) => Promise<void>;
+  pushActivity: (text: string, demo?: boolean) => void;
+  setDemo: (id: DemoScenarioId | null) => void;
 }
 
 let settingsEpoch = 0;
@@ -156,7 +163,7 @@ export const useParallax = create<ParallaxState>((set, get) => ({
   settingsOpen: false,
   spentToday: 0,
   view: "trade",
-  analyzeOpen: false,
+  analyzeOpen: true,
   opportunities: [],
   scanning: false,
   scanAt: 0,
@@ -170,7 +177,36 @@ export const useParallax = create<ParallaxState>((set, get) => ({
   armed: [],
   workerEnabled: true,
   fills: [],
+  activity: [],
+  demo: null,
   connectNonce: 0,
+  pushActivity: (text, demo) => {
+    const row = { at: Date.now(), text, demo };
+    set({ activity: [row, ...get().activity].slice(0, 40) });
+  },
+  setDemo: (id) => {
+    if (!id) {
+      set({ demo: null });
+      get().pushActivity("Demo mode off. Showing live Binance quotes.");
+      return;
+    }
+    const scenario = DEMO_SCENARIOS.find((row) => row.id === id) || null;
+    set({ demo: scenario, ticker: "NVDA", analyzeOpen: true });
+    get().pushActivity(`DEMO DATA · ${scenario?.label}`, true);
+    if (id === "gap-closed") {
+      get().pushActivity("DEMO · US market closed", true);
+      get().pushActivity("DEMO · Gap detected +1.54%", true);
+      get().pushActivity("DEMO · Net edge +1.20%", true);
+    }
+    if (id === "agent-watch") {
+      get().pushActivity("DEMO · Scanner started", true);
+      get().pushActivity("DEMO · Strategy threshold PASSED", true);
+      get().pushActivity("DEMO · Waiting for wallet approval", true);
+    }
+    if (id === "sim-ok") get().pushActivity("DEMO · Simulation prepared (not a chain fill)", true);
+    if (id === "low-liq") get().pushActivity("DEMO · Liquidity check FAILED", true);
+    if (id === "low-edge") get().pushActivity("DEMO · Net edge below threshold", true);
+  },
   askConnect: () => set((state) => ({ connectNonce: state.connectNonce + 1 })),
   setWallet: (wallet) => set({ wallet }),
   setCommand: (command) => set({ command }),
@@ -221,6 +257,7 @@ export const useParallax = create<ParallaxState>((set, get) => ({
       quoteAt: Date.now(),
       ticker: res.book.underlying.ticker,
     });
+    get().pushActivity(`Quote ${res.book.underlying.ticker} · ${res.book.best?.wrapper.symbol || "no open rail"}`);
     const active = res.book.books.find((book) => book.wrapper.rail === get().lockedRail) || res.book.best;
     if (active) void get().loadCandles(active.wrapper.address);
   },

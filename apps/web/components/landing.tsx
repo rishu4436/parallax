@@ -80,13 +80,13 @@ export function Landing() {
       </header>
 
       <main className="flex flex-1 flex-col justify-center py-16 md:py-24">
-        <p className="kicker">BNB Smart Chain · tokenized US stocks</p>
+        <p className="kicker">Find the gap. Prove the opportunity. Execute it.</p>
         <h1 className="display mt-6 max-w-4xl text-5xl leading-[1.08] text-ink sm:text-6xl md:text-7xl">
           <span className="block">Cash freezes.</span>
           <span className="mt-2 block text-gold">BNB doesn’t.</span>
         </h1>
         <p className="mt-8 max-w-xl text-lg leading-relaxed text-dim">
-          An execution desk for tokenized stocks on BNB Smart Chain. Observe the cash print, the three wrappers, liquidity and slip, then simulate and sign. Cash freezes. BNB doesn’t. Trade the gap.
+          Find tokenized-stock price gaps. Calculate the executable edge. Act through BNB Smart Chain. Trade the gap.
         </p>
 
         <div className="fog-target mt-14 grid gap-10 border-t border-line pt-8 md:grid-cols-[1.1fr_1fr]">

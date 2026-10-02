@@ -11,6 +11,8 @@ export type CopilotIntent =
   | { type: "why" }
   | { type: "simulate"; ticker?: string }
   | { type: "buy"; usdt: string; ticker?: string; prefer: "liquidity" | "net" }
+  | { type: "liquidity"; ticker: string }
+  | { type: "strategy"; ticker: string; minAbsPct: number }
   | { type: "help" };
 
 const TICKER = new Map(
@@ -44,9 +46,11 @@ function usdtIn(text: string): string | undefined {
 export function parseCopilot(text: string): CopilotIntent {
   const q = text.trim().toLowerCase();
   if (!q) return { type: "help" };
+  if (/strateg|arm |watch/.test(q)) return { type: "strategy", ticker: tickerIn(q) || "NVDA", minAbsPct: pctIn(q, 1) };
   if (/why|flag|reason|explain/.test(q)) return { type: "why" };
   if (/simulat/.test(q)) return { type: "simulate", ticker: tickerIn(q) };
   if (/compar/.test(q)) return { type: "compare", ticker: tickerIn(q) || "NVDA" };
+  if (/liquid/.test(q) && !/buy|sell/.test(q)) return { type: "liquidity", ticker: tickerIn(q) || "NVDA" };
   if (/low(?:est)? slip|tight slip|slippage/.test(q) && /only|filter|show|low/.test(q)) {
     return { type: "low-slip", maxSlipPct: pctIn(q, 0.25) };
   }
@@ -62,7 +66,7 @@ export function parseCopilot(text: string): CopilotIntent {
 export interface CopilotReply {
   text: string;
   cards: OpportunityCard[];
-  action?: { ticker: string; rail?: Rail; side?: Side; usdt?: string; analyze?: boolean; simulate?: boolean };
+  action?: { ticker: string; rail?: Rail; side?: Side; usdt?: string; analyze?: boolean; simulate?: boolean; arm?: boolean; minNetPct?: number };
 }
 
 export function answerCopilot(
@@ -127,6 +131,24 @@ export function answerCopilot(
         ? `OPEN rails with measured slip ≤ ${formatPct(intent.maxSlipPct)}.\n${rows.map((row) => `${row.symbol} slip ${formatPct(row.slipPct)} net ${formatPct(row.netPct)}`).join("\n")}`
         : `No OPEN rail has measured slip ≤ ${formatPct(intent.maxSlipPct)}.`,
       cards: rows,
+    };
+  }
+  if (intent.type === "liquidity") {
+    const rows = [...cards.filter((row) => row.ticker === intent.ticker)].sort((a, b) => b.liquidity - a.liquidity);
+    const top = rows[0];
+    return {
+      text: top
+        ? `Highest quoted volume on ${intent.ticker} is ${top.symbol} at ${top.liquidity.toFixed(0)}. This is 24h kline volume, not a CEX book.`
+        : `No liquidity print for ${intent.ticker} in this scan.`,
+      cards: rows.slice(0, 3),
+      action: top ? { ticker: intent.ticker, rail: top.rail, analyze: true } : undefined,
+    };
+  }
+  if (intent.type === "strategy") {
+    return {
+      text: `Arm a watch on ${intent.ticker} for |net edge| ≥ ${formatPct(intent.minAbsPct)}. Execution still requires wallet approval.`,
+      cards: open.filter((row) => row.ticker === intent.ticker),
+      action: { ticker: intent.ticker, arm: true, minNetPct: intent.minAbsPct, analyze: true },
     };
   }
   if (intent.type === "gap") {

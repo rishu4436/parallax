@@ -13,6 +13,8 @@ export * from "./plainRule";
 export * from "./plan";
 export * from "./opportunity";
 export * from "./copilot";
+export * from "./flag";
+export * from "./adapters";
 export * from "./settings";
 export * from "./typed";
 export * from "./loops/BaseStrategy";

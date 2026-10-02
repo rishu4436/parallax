@@ -43,7 +43,7 @@ export function Copilot() {
       ok?: boolean;
       text?: string;
       message?: string;
-      action?: { ticker: string; rail?: Rail; side?: Side; usdt?: string; analyze?: boolean; simulate?: boolean };
+      action?: { ticker: string; rail?: Rail; side?: Side; usdt?: string; analyze?: boolean; simulate?: boolean; arm?: boolean; minNetPct?: number };
     };
     setBusy(false);
     setMessages((rows) => [...rows, { role: "desk", text: body.text || body.message || "No live answer." }]);
@@ -52,6 +52,9 @@ export function Copilot() {
     if (action.usdt) setUsdt(action.usdt);
     if (action.analyze) setAnalyzeOpen(true);
     await selectTicker(action.ticker, action.rail, action.side);
+    if (action.arm) {
+      useParallax.getState().setView("jobs");
+    }
     if (action.simulate) {
       const state = useParallax.getState();
       const book = state.books.find((row) => row.wrapper.rail === action.rail) || state.best;

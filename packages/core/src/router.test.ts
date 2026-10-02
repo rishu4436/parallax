@@ -44,6 +44,10 @@ const settings: Settings = {
   dailyCapUsdt: 100,
   allowedRails: ["bStock", "ondo", "xStock"],
   killSwitch: false,
+  minNetEdgePct: 0.5,
+  maxSlipPct: 0.5,
+  minLiquidityUsd: 100_000,
+  approvalRequired: true,
 };
 
 test("resolve nvidia, NVDA, and NVDAB to the same underlying", () => {
