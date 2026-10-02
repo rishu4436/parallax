@@ -1,13 +1,15 @@
 import { getAddress } from "viem";
 import {
   QUOTE_ASSETS,
-  RouterReject,
   WALLET_MISMATCH,
-  assertBuildAllowed,
+  blockedBuildMessage,
+  evaluatePolicy,
   needsSignerQuote,
   quoteStillYoung,
   signerMatchesQuote,
+  sourceFromActor,
   type Intent,
+  type PolicySource,
   type Settings,
   type VenueQuote,
 } from "@parallax/core";
@@ -59,17 +61,24 @@ export async function prepareExecution(input: {
   settings: Settings;
   spentToday: number;
   quote: VenueQuote;
+  source?: PolicySource;
+  liquidity?: number;
+  reference?: { price: number | null; label?: string };
 }): Promise<PrepareResult> {
-  try {
-    assertBuildAllowed(
-      { ...input.intent, railLock: input.quote.wrapper.rail },
-      input.settings,
-      input.spentToday,
-    );
-  } catch (err) {
-    const message = err instanceof RouterReject ? err.message : err instanceof Error ? err.message : String(err);
-    return { step: "rejected", message };
-  }
+  const source = input.source ?? sourceFromActor(input.intent.actor);
+  const preview = evaluatePolicy({
+    source,
+    mode: "preview",
+    intent: { ...input.intent, railLock: input.quote.wrapper.rail },
+    settings: input.settings,
+    spentToday: input.spentToday,
+    quote: input.quote,
+    signer: input.intent.wallet,
+    liquidity: input.liquidity,
+    reference: input.reference,
+  });
+  const blocked = blockedBuildMessage(preview);
+  if (blocked) return { step: "rejected", message: blocked };
 
   let quote = input.quote;
   const signerBound = needsSignerQuote(quote);
@@ -216,4 +225,33 @@ export async function prepareExecution(input: {
       simulateReason: message,
     };
   }
+}
+
+/** MCP / LLM view of prepare. Drops unsigned tx and RFQ typed data. */
+export type PublicPrepare =
+  | { step: "rejected"; message: string }
+  | { step: "expired"; message: string; quote?: VenueQuote }
+  | { step: "approve"; quote: VenueQuote; spender: string }
+  | { step: "sign-rfq"; quote: VenueQuote; vendor: string; quoteId: string; signingScheme?: string; outAmount: string }
+  | { step: "sign-swap"; quote: VenueQuote; simulateStatus: "SUCCESS" | "FAILED"; simulateReason?: string };
+
+export function publicPrepare(result: PrepareResult): PublicPrepare {
+  if (result.step === "rejected" || result.step === "expired") return result;
+  if (result.step === "approve") return { step: "approve", quote: result.quote, spender: result.spender };
+  if (result.step === "sign-rfq") {
+    return {
+      step: "sign-rfq",
+      quote: result.quote,
+      vendor: result.vendor,
+      quoteId: result.quoteId,
+      signingScheme: result.signingScheme,
+      outAmount: result.outAmount,
+    };
+  }
+  return {
+    step: "sign-swap",
+    quote: result.quote,
+    simulateStatus: result.simulateStatus,
+    simulateReason: result.simulateReason,
+  };
 }

@@ -18,6 +18,7 @@ export function RiskControls() {
   if (!settings) return null;
 
   async function pauseAll() {
+    if (!settings) return;
     setBusy(true);
     const message = await saveSettings({ ...settings, killSwitch: true });
     setBusy(false);

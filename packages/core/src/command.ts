@@ -1,18 +1,35 @@
 import { resolveQuery, type ResolveHit } from "./registry";
 import type { Intent, Side } from "./types";
 
+export type CommandJump =
+  | "portfolio"
+  | "weekend"
+  | "settings"
+  | "tape"
+  | "strategies"
+  | "home"
+  | "trade"
+  | "jobs"
+  | "wallet";
+
 export type CommandHit =
   | { type: "ticker"; hit: ResolveHit; label: string }
   | { type: "trade"; side: Side; usdt: string; hit: ResolveHit; label: string }
-  | { type: "jump"; target: "portfolio" | "weekend" | "settings" | "tape" | "strategies"; label: string };
+  | { type: "jump"; target: CommandJump; label: string };
 
-const JUMPS: Record<string, "portfolio" | "weekend" | "settings" | "tape" | "strategies"> = {
+const JUMPS: Record<string, CommandJump> = {
   portfolio: "portfolio",
   weekend: "weekend",
   settings: "settings",
   tape: "tape",
   strategies: "strategies",
   strategy: "strategies",
+  home: "home",
+  overview: "home",
+  desk: "trade",
+  trade: "trade",
+  jobs: "jobs",
+  wallet: "wallet",
 };
 
 export function parseCommand(input: string): CommandHit | null {

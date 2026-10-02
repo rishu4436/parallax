@@ -1,6 +1,6 @@
 import { fromBaseUnits } from "./amounts";
-import type { Intent, Rail, RailBook, RouterState, Settings, VenueQuote } from "./types";
-import { COPY, QUOTE_TTL_MS } from "./types";
+import type { Rail, RailBook, RouterState, VenueQuote } from "./types";
+import { QUOTE_TTL_MS } from "./types";
 
 export class RouterReject extends Error {
   constructor(message: string) {
@@ -69,58 +69,12 @@ export function pickBest(books: RailBook[], railLock?: Rail, allowed?: Rail[]): 
   return pool[0] ?? null;
 }
 
-export function assertBuildAllowed(intent: Intent, settings: Settings, spentTodayUsdt: number): void {
-  if (settings.killSwitch) throw new RouterReject(COPY.killSwitch);
-  const usdt = Number(intent.usdt);
-  if (!Number.isFinite(usdt) || usdt <= 0) throw new RouterReject("Amount must be greater than zero.");
-  if (intent.railLock && !settings.allowedRails.includes(intent.railLock)) {
-    throw new RouterReject(`${intent.railLock} is turned off in Settings.`);
-  }
-  if (intent.actor === "user") return;
-  if (usdt > settings.orderCapUsdt) {
-    throw new RouterReject(`Order cap is ${settings.orderCapUsdt} USDT.`);
-  }
-  if (spentTodayUsdt + usdt > settings.dailyCapUsdt) {
-    throw new RouterReject(`Daily cap is ${settings.dailyCapUsdt} USDT. ${spentTodayUsdt.toFixed(2)} already sent today.`);
-  }
-}
-
 export interface ConfirmGate {
   sign: boolean;
   requote: boolean;
   cancel: boolean;
   reason?: string;
   expired: boolean;
-}
-
-export function confirmGate(input: {
-  now: number;
-  quoteExpiresAt: number;
-  simulateStatus?: "SUCCESS" | "FAILED" | "PENDING" | "NONE";
-  simulateReason?: string;
-  executionMode?: "SWAP" | "RFQ";
-  state: RouterState;
-}): ConfirmGate {
-  const expired = input.now >= input.quoteExpiresAt;
-  if (input.state === "expired" || expired) {
-    return { sign: false, requote: true, cancel: true, expired: true, reason: COPY.quoteExpired };
-  }
-  if (input.executionMode === "RFQ") {
-    return { sign: true, requote: true, cancel: true, expired: false };
-  }
-  if (input.simulateStatus === "FAILED") {
-    return {
-      sign: false,
-      requote: true,
-      cancel: true,
-      expired: false,
-      reason: plainSimulate(input.simulateReason || "Simulation failed"),
-    };
-  }
-  if (input.simulateStatus === "PENDING" || input.simulateStatus === "NONE") {
-    return { sign: false, requote: true, cancel: true, expired: false, reason: "Waiting on simulate." };
-  }
-  return { sign: true, requote: true, cancel: true, expired: false };
 }
 
 export function plainSimulate(reason: string): string {

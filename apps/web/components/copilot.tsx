@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useParallax } from "@/lib/store";
+import { useGo } from "@/lib/use-go";
 import type { Rail, Side } from "@parallax/core";
 
 interface Message {
@@ -17,6 +18,7 @@ export function Copilot() {
   const setUsdt = useParallax((s) => s.setUsdt);
   const setAnalyzeOpen = useParallax((s) => s.setAnalyzeOpen);
   const openConfirm = useParallax((s) => s.openConfirm);
+  const go = useGo();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -53,7 +55,7 @@ export function Copilot() {
     if (action.analyze) setAnalyzeOpen(true);
     await selectTicker(action.ticker, action.rail, action.side);
     if (action.arm) {
-      useParallax.getState().setView("jobs");
+      go("jobs");
     }
     if (action.simulate) {
       const state = useParallax.getState();

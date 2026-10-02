@@ -53,6 +53,49 @@ export function formatQty(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
 
+export function formatUsdt(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  return `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`;
+}
+
+export function formatBps(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  return `${Math.round(n)} bps`;
+}
+
+export function formatLiq(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+}
+
+export function formatTtl(leftoverMs: number): string {
+  if (!Number.isFinite(leftoverMs) || leftoverMs <= 0) return "00:00";
+  const s = Math.ceil(leftoverMs / 1000);
+  return `00:${String(s).padStart(2, "0")}`;
+}
+
+export function formatAge(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  if (ms < 1000) return "now";
+  if (ms < 60_000) return `${Math.floor(ms / 1000)}s`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`;
+  return `${Math.floor(ms / 3_600_000)}h`;
+}
+
+export function quoteFreshness(quoteExpiresAt: number, now = Date.now()): {
+  stale: boolean;
+  leftoverMs: number;
+  label: string;
+} {
+  const leftoverMs = quoteExpiresAt - now;
+  const stale = leftoverMs <= 0;
+  return {
+    stale,
+    leftoverMs: Math.max(0, leftoverMs),
+    label: stale ? "QUOTE STALE" : formatTtl(leftoverMs),
+  };
+}
+
 export function shortAddr(addr: string): string {
   if (!addr || addr.length < 10) return addr;
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;

@@ -180,6 +180,7 @@ export interface TapeRow {
   orderId?: string;
   vendorName?: string;
   source?: "user" | "agent";
+  passportHash?: string;
 }
 
 export interface FridayPrint {
@@ -247,6 +248,7 @@ export interface AgentFill {
   status: "filled" | "skipped" | "failed";
   txHash?: string;
   note: string;
+  passportHash?: string;
 }
 
 export const QUOTE_TTL_MS = 30_000;

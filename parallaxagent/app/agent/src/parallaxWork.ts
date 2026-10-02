@@ -8,7 +8,7 @@ const base = () => (process.env.PARALLAX_BASE || "http://127.0.0.1:3020").replac
 export interface ParallaxAsk {
   ticker: string;
   usdt: string;
-  kind: "quote" | "best" | "weekend" | "advise";
+  kind: "quote" | "best" | "weekend" | "advise" | "passport" | "policy";
 }
 
 export function parseParallaxPrompt(prompt: string): ParallaxAsk {
@@ -31,15 +31,21 @@ export function parseParallaxPrompt(prompt: string): ParallaxAsk {
           ? "weekend"
           : type === "best"
             ? "best"
-            : /strateg|advise|cheap_rail|gap_fade|open_print|dca|flatten/i.test(type)
-              ? "advise"
-              : "quote";
+            : type === "passport"
+              ? "passport"
+              : type === "policy"
+                ? "policy"
+              : /strateg|advise|cheap_rail|gap_fade|open_print|dca|flatten/i.test(type)
+                ? "advise"
+                : "quote";
       return { ticker, usdt, kind };
     } catch {
       /* plain text below */
     }
   }
   if (/weekend/i.test(trimmed)) return { ticker: tickerOf(trimmed), usdt: "10", kind: "weekend" };
+  if (/\bpolicy\b/i.test(trimmed)) return { ticker: tickerOf(trimmed), usdt: amountOf(trimmed), kind: "policy" };
+  if (/passport/i.test(trimmed)) return { ticker: tickerOf(trimmed), usdt: amountOf(trimmed), kind: "passport" };
   if (/strateg|advise|\bplan\b/i.test(trimmed)) return { ticker: tickerOf(trimmed), usdt: amountOf(trimmed), kind: "advise" };
   if (/\bbest\b/i.test(trimmed)) return { ticker: tickerOf(trimmed), usdt: amountOf(trimmed), kind: "best" };
   return { ticker: tickerOf(trimmed), usdt: amountOf(trimmed), kind: "quote" };
@@ -91,8 +97,19 @@ export async function parallaxDeliverable(prompt: string): Promise<string> {
       best?: { wrapper?: { symbol?: string }; best?: { vendorName?: string; perShare?: number; executionMode?: string } };
       books?: Array<{ status?: string; errorText?: string; wrapper?: { symbol?: string; rail?: string }; best?: { ok?: boolean; executionMode?: string; vendorName?: string; perShare?: number } }>;
     };
+    passport?: { hash?: string; state?: string; reason?: string; canonical?: string; body?: unknown; gate?: unknown };
+    policy?: { verdict?: string; nextAction?: string; primary?: { code?: string; human?: string; machine?: string; nextAction?: string } };
   };
   if (!body.ok || !body.book) return `PARALLAX quote failed: ${body.message || "the desk API did not answer"}`;
+  if (ask.kind === "passport") {
+    if (!body.passport) return `PARALLAX passport unavailable for ${ask.ticker}`;
+    return JSON.stringify(body.passport);
+  }
+  if (ask.kind === "policy") {
+    const policy = body.policy || body.passport?.gate;
+    if (!policy) return `PARALLAX policy unavailable for ${ask.ticker}`;
+    return JSON.stringify(policy);
+  }
   const rows = (body.book.books || []).map((row) => {
     const quote = row.best;
     const price = quote?.ok && quote.perShare ? `$${quote.perShare.toFixed(2)}` : row.errorText || "—";
@@ -125,6 +142,10 @@ export async function parallaxDeliverable(prompt: string): Promise<string> {
           ? `Friday close $${body.book.fridayClose.toFixed(2)}`
           : "Friday ref unavailable",
     ...rows,
+    body.passport ? `passport ${body.passport.state || "—"} ${body.passport.hash || ""}` : null,
+    body.policy?.verdict
+      ? `policy ${body.policy.verdict}${body.policy.primary?.code ? ` ${body.policy.primary.code}` : ""} ${body.policy.primary?.human || ""}`.trim()
+      : null,
     ...(body.plan ? ["", "Plan", body.plan.headline || "", ...planLines] : []),
     ...(adviceLines.length && ask.kind === "advise" ? ["", "Advice", ...adviceLines] : []),
     "Jobs queue a signature. Studio signing.ts is the only signer. This deliverable is not a transaction.",

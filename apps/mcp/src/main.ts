@@ -2,9 +2,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { readEnv } from "@parallax/config";
-import { adviseDesk, cashSession, deskSignals, resolveQuery, strategyPlan, weekendBrief, type Intent, type VenueQuote } from "@parallax/core";
-import { readBeat, readFriday, readJobs, readSettings, readTape, spentTodayUsdt } from "@parallax/core/persist";
-import { prepareExecution, quoteIntent, readBalances } from "@parallax/web3";
+import { adviseDesk, cashSession, deskSignals, evaluatePolicy, issuePassport, passportFromBook, policyPublic, referenceFromBook, resolveQuery, strategyPlan, weekendBrief, type Intent, type VenueQuote } from "@parallax/core";
+import { findPassport, readBeat, readFriday, readJobs, readSettings, readTape, spentTodayUsdt, writePassport } from "@parallax/core/persist";
+import { prepareExecution, publicPrepare, quoteIntent, readBalances } from "@parallax/web3";
 
 const server = new McpServer({ name: "parallax", version: "0.1.0" });
 
@@ -27,11 +27,12 @@ server.tool(
   },
   async ({ ticker, usdt, wallet, side }) => {
     const env = readEnv();
-    const book = await quoteIntent(
-      { ticker, usdt, side, wallet: (wallet || env.quoteWallet) as Intent["wallet"] },
-      { slip: true, allowed: readSettings().allowedRails },
-    );
-    return text(book);
+    const settings = readSettings();
+    const intent: Intent = { ticker, usdt, side, wallet: (wallet || env.quoteWallet) as Intent["wallet"] };
+    const book = await quoteIntent(intent, { slip: true, allowed: settings.allowedRails });
+    const passport = passportFromBook({ intent, book, settings, spentToday: spentTodayUsdt(), source: "mcp", signer: intent.wallet });
+    if (passport) writePassport(passport);
+    return text({ ...book, passport, policy: passport?.gate ? policyPublic(passport.gate) : null });
   },
 );
 
@@ -75,13 +76,96 @@ server.tool(
     const book = await quoteIntent(intent, { slip: false, allowed: readSettings().allowedRails });
     const quote: VenueQuote | undefined = (rail ? book.books.find((item) => item.wrapper.rail === rail)?.best : book.best?.best) ?? undefined;
     if (!quote) return text({ ok: false, message: "No open route", books: book.books });
+    const settings = readSettings();
+    const spentToday = spentTodayUsdt();
+    const locked = { ...intent, railLock: quote.wrapper.rail };
     const prepared = await prepareExecution({
-      intent: { ...intent, railLock: quote.wrapper.rail },
+      intent: locked,
       quote,
-      settings: readSettings(),
-      spentToday: spentTodayUsdt(),
+      settings,
+      spentToday,
+      source: "mcp",
+      reference: referenceFromBook(book),
     });
-    return text(prepared);
+    const liveQuote = "quote" in prepared && prepared.quote ? prepared.quote : quote;
+    const passport = issuePassport({
+      intent: locked,
+      quote: liveQuote,
+      underlying: { ticker: book.underlying.ticker, name: book.underlying.name },
+      reference: referenceFromBook(book),
+      settings,
+      spentToday,
+      prepare: prepared,
+      source: "mcp",
+      signer: locked.wallet,
+    });
+    writePassport(passport);
+    return text({
+      ok: prepared.step !== "rejected" && prepared.step !== "expired",
+      ...publicPrepare(prepared),
+      passport,
+      policy: passport.gate ? policyPublic(passport.gate) : null,
+    });
+  },
+);
+
+server.tool(
+  "parallax_passport",
+  "ExecutionPassport for a live quote or a stored hash. Does not sign.",
+  {
+    hash: z.string().optional(),
+    ticker: z.string().optional(),
+    usdt: z.string().default("10"),
+    wallet: z.string().optional(),
+    side: z.enum(["buy", "sell"]).default("buy"),
+  },
+  async ({ hash, ticker, usdt, wallet, side }) => {
+    if (hash) return text(findPassport(hash) ?? { ok: false, message: "Passport not found" });
+    if (!ticker) return text({ ok: false, message: "hash or ticker is required" });
+    const env = readEnv();
+    const settings = readSettings();
+    const intent: Intent = { ticker, usdt, side, wallet: (wallet || env.quoteWallet) as Intent["wallet"] };
+    const book = await quoteIntent(intent, { slip: true, allowed: settings.allowedRails });
+    const passport = passportFromBook({ intent, book, settings, spentToday: spentTodayUsdt(), source: "mcp", signer: intent.wallet });
+    if (passport) writePassport(passport);
+    return text(passport ?? { ok: false, message: "No quote to passport" });
+  },
+);
+
+server.tool(
+  "parallax_policy",
+  "Evaluate a proposed execution against PolicyEngine. Does not sign.",
+  {
+    ticker: z.string(),
+    side: z.enum(["buy", "sell"]).default("buy"),
+    usdt: z.string().default("10"),
+    wallet: z.string().optional(),
+    rail: z.enum(["bStock", "ondo", "xStock"]).optional(),
+    mode: z.enum(["preview", "execute"]).default("preview"),
+  },
+  async ({ ticker, side, usdt, wallet, rail, mode }) => {
+    const env = readEnv();
+    const settings = readSettings();
+    const intent: Intent = {
+      ticker,
+      side,
+      usdt,
+      wallet: (wallet || env.quoteWallet) as Intent["wallet"],
+      railLock: rail,
+    };
+    const book = await quoteIntent(intent, { slip: true, allowed: settings.allowedRails });
+    const quote: VenueQuote | undefined = (rail ? book.books.find((item) => item.wrapper.rail === rail)?.best : book.best?.best) ?? undefined;
+    const decision = evaluatePolicy({
+      source: "mcp",
+      mode,
+      intent,
+      settings,
+      spentToday: spentTodayUsdt(),
+      quote,
+      signer: intent.wallet,
+      reference: referenceFromBook(book),
+    });
+    return text({ ok: true, policy: policyPublic(decision), quote: quote ?? null });
   },
 );
 

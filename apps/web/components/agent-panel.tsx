@@ -45,7 +45,7 @@ export function AgentExecutionLog({ initial }: { initial: AgentFill[] }) {
       gold: false,
       demo: row.demo,
       title: row.text,
-      detail: row.demo ? "DEMO DATA" : "",
+      detail: row.demo ? "DEMO DATA" : row.passportHash ? `passport ${row.passportHash.slice(0, 12)}` : "",
     })),
     ...rows.map((row) => ({
       id: row.id,
@@ -53,7 +53,7 @@ export function AgentExecutionLog({ initial }: { initial: AgentFill[] }) {
       gold: true,
       demo: false,
       title: `${row.side} ${row.usdt} USDT ${row.ticker}${row.spreadPct != null ? ` · ${formatPct(row.spreadPct)}` : ""}`,
-      detail: `${row.note}${row.gasUsd != null ? ` · gas ${formatPx(row.gasUsd)}` : ""} · x402 ${row.x402}`,
+      detail: `${row.note}${row.gasUsd != null ? ` · gas ${formatPx(row.gasUsd)}` : ""}${row.passportHash ? ` · passport ${row.passportHash.slice(0, 12)}` : ""} · x402 ${row.x402}`,
     })),
   ]
     .sort((a, b) => b.at - a.at)

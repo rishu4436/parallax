@@ -5,22 +5,42 @@ import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { bsc } from "wagmi/chains";
 import type { Address, Hex } from "viem";
 import {
-  confirmGate,
   COPY,
+  evaluatePolicy,
   formatQty,
   fromBaseUnits,
   parseTypedData,
   plainSimulate,
+  policyAllowsApprove,
+  policyAllowsSend,
   QUOTE_ASSETS,
   signerMatchesQuote,
   WALLET_MISMATCH,
+  type Settings,
   type TapeRow,
 } from "@parallax/core";
+import { PassportCompact } from "@/components/execution-passport";
 import { underlyingName, useParallax } from "@/lib/store";
+
+const FALLBACK_SETTINGS: Settings = {
+  orderCapUsdt: 25,
+  dailyCapUsdt: 100,
+  allowedRails: ["bStock", "ondo", "xStock"],
+  killSwitch: false,
+  minNetEdgePct: 0.5,
+  maxSlipPct: 0.5,
+  minLiquidityUsd: 100_000,
+  approvalRequired: true,
+};
 
 export function ConfirmTakeover() {
   const confirmState = useParallax((s) => s.confirm);
   const ticker = useParallax((s) => s.ticker);
+  const settings = useParallax((s) => s.settings);
+  const spentToday = useParallax((s) => s.spentToday);
+  const priorClose = useParallax((s) => s.priorClose);
+  const fridayClose = useParallax((s) => s.fridayClose);
+  const opportunities = useParallax((s) => s.opportunities);
   const closeConfirm = useParallax((s) => s.closeConfirm);
   const requoteConfirm = useParallax((s) => s.requoteConfirm);
   const pushTape = useParallax((s) => s.pushTape);
@@ -43,16 +63,45 @@ export function ConfirmTakeover() {
   const quote = result && "quote" in result && result.quote ? result.quote : confirm.quote;
   const left = Math.max(0, quote.quoteExpiresAt - now);
   const expired = left <= 0;
-  const gate = confirmGate({
+  const prepareStep =
+    result?.step === "rejected" ||
+    result?.step === "expired" ||
+    result?.step === "approve" ||
+    result?.step === "sign-rfq" ||
+    result?.step === "sign-swap"
+      ? result.step
+      : undefined;
+  const decision = evaluatePolicy({
+    source: confirm.actor === "agent" ? "agentic" : "ui",
+    mode: "execute",
     now,
-    quoteExpiresAt: quote.quoteExpiresAt,
-    simulateStatus:
-      result?.step === "sign-swap" ? result.simulateStatus : result?.step === "sign-rfq" ? "SUCCESS" : result?.step === "approve" ? "SUCCESS" : "PENDING",
+    intent: {
+      ticker,
+      side: confirm.side,
+      usdt: confirm.usdt,
+      railLock: quote.wrapper.rail,
+      vendorLock: quote.vendorName,
+      wallet: (address || quote.userWalletAddress || "0x0000000000000000000000000000000000000001") as Address,
+      actor: confirm.actor,
+    },
+    settings: settings || FALLBACK_SETTINGS,
+    spentToday,
+    quote,
+    signer: address,
+    reference: confirm.passport?.body.reference ||
+      (priorClose && priorClose > 0
+        ? { price: priorClose, label: "prior cash close" }
+        : fridayClose && fridayClose > 0
+          ? { price: fridayClose, label: "Friday cash close" }
+          : { price: null, label: "unavailable" }),
+    liquidity: opportunities.find((row) => row.ticker === ticker && row.rail === quote.wrapper.rail)?.liquidity,
+    simulateStatus: result?.step === "sign-swap" ? result.simulateStatus : result?.step === "sign-rfq" ? "NONE" : "NONE",
     simulateReason: result?.step === "sign-swap" ? result.simulateReason : undefined,
-    executionMode: quote.executionMode,
-    state: expired ? "expired" : "awaiting_signature",
+    prepareStep,
   });
-  const signOff = !gate.sign || confirm.preparing || Boolean(busy) || result?.step === "rejected" || result?.step === "expired";
+  const canApprove = Boolean(result?.step === "approve" && policyAllowsApprove(decision));
+  const canSign = policyAllowsSend(decision);
+  const signOff = !(canApprove || canSign) || confirm.preparing || Boolean(busy) || result?.step === "rejected" || result?.step === "expired";
   const qty = quote.ok ? formatQty(fromBaseUnits(quote.outAmount, quote.wrapper.decimals)) : "—";
 
   async function remember(row: TapeRow) {
@@ -89,6 +138,10 @@ export function ConfirmTakeover() {
 
   async function onSign() {
     if (!result || result.step === "rejected" || result.step === "expired") return;
+    if (!(canApprove || canSign)) {
+      setLocalError(decision.primary?.human || "Policy blocked this execution.");
+      return;
+    }
     if (!address || !walletClient) {
       setLocalError("Connect the browser Binance Web3 Wallet. Agentic sign-in can quote. It cannot sign this transaction.");
       return;
@@ -106,6 +159,7 @@ export function ConfirmTakeover() {
       status: "signing",
       vendorName: quote.vendorName,
       source: confirm.actor,
+      passportHash: confirm.passport?.hash,
     };
     try {
       if (result.step === "approve") {
@@ -198,6 +252,7 @@ export function ConfirmTakeover() {
   const simLine = result?.step === "sign-swap" ? describeSimulation(result.simulation, address, quote) : null;
   const reason =
     localError ||
+    (decision.verdict === "PASS" ? undefined : decision.primary?.human) ||
     confirm.note ||
     (result?.step === "rejected" ? result.message : undefined) ||
     (result?.step === "expired" ? COPY.quoteExpired : undefined) ||
@@ -231,6 +286,12 @@ export function ConfirmTakeover() {
           <Ring left={left} />
           <p className="num text-sm">{expired ? COPY.quoteExpired : `Quote dies in ${formatLeft(left)}`}</p>
         </div>
+        {confirm.passport ? <PassportCompact passport={confirm.passport} /> : null}
+        <p className="mt-3 text-[11px] tracking-[0.14em] text-dim">
+          Policy {decision.verdict}
+          {decision.primary?.code ? ` · ${decision.primary.code}` : ""}
+          {decision.nextAction !== "none" && decision.nextAction !== "sign" ? ` · ${decision.nextAction.replaceAll("_", " ")}` : ""}
+        </p>
         {reason ? <p className="mt-4 text-sm text-down">{reason}</p> : null}
         {busy ? <p className="mt-2 text-sm text-dim">{busy}</p> : null}
         <div className="mt-6 grid grid-cols-3 gap-2">

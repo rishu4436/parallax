@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { readEnv } from "@parallax/config";
 import { etParts } from "./session";
+import { refreshPassport, type ExecutionPassport } from "./passport";
 import type { AgentBeat, AgentFill, ArmedStrategy, FridayPrint, Job, QueuedIntent, Settings, TapeRow } from "./types";
 import { RAILS } from "./types";
 
@@ -146,4 +147,21 @@ export function pushFill(row: AgentFill): AgentFill[] {
   const next = [row, ...readFills().filter((item) => item.id !== row.id)].slice(0, 40);
   writeJson("fills.json", next);
   return next;
+}
+
+export function readPassports(): ExecutionPassport[] {
+  return readJson<ExecutionPassport[]>("passports.json", []);
+}
+
+export function writePassport(passport: ExecutionPassport): ExecutionPassport[] {
+  const rows = readPassports().filter((row) => row.hash !== passport.hash);
+  const next = [passport, ...rows].slice(0, 40);
+  writeJson("passports.json", next);
+  return next;
+}
+
+export function findPassport(hash: string): ExecutionPassport | undefined {
+  const needle = hash.toLowerCase();
+  const found = readPassports().find((row) => row.hash === needle || (needle.length >= 12 && row.hash.startsWith(needle)));
+  return found ? refreshPassport(found) : undefined;
 }

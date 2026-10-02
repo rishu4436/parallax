@@ -578,7 +578,27 @@ export function buildMcpServer(
     async (a: { ticker?: string }) =>
       toolResult({ text: await parallaxDeliverable(JSON.stringify({ type: "weekend", ticker: a.ticker || "NVDA" })) }),
   );
-    server.registerTool(
+  server.registerTool(
+    "parallax_passport",
+    {
+      description: "PARALLAX ExecutionPassport for a ticker. Same object as the desk. Does not sign.",
+      inputSchema: { ticker: z.string(), usdt: z.string().optional() },
+      annotations: READONLY_ANNOTATIONS,
+    },
+    async (a: { ticker: string; usdt?: string }) =>
+      toolResult({ text: await parallaxDeliverable(JSON.stringify({ type: "passport", ticker: a.ticker, usdt: a.usdt || "10" })) }),
+  );
+  server.registerTool(
+    "parallax_policy",
+    {
+      description: "PARALLAX PolicyEngine verdict for a ticker. PASS BLOCK REQUOTE WAIT. Does not sign.",
+      inputSchema: { ticker: z.string(), usdt: z.string().optional() },
+      annotations: READONLY_ANNOTATIONS,
+    },
+    async (a: { ticker: string; usdt?: string }) =>
+      toolResult({ text: await parallaxDeliverable(JSON.stringify({ type: "policy", ticker: a.ticker, usdt: a.usdt || "10" })) }),
+  );
+  server.registerTool(
     "job_status",
     roConfig("job_status"),
     async (a: ReadArgs<"job_status">) =>

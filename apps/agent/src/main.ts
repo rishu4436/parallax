@@ -1,8 +1,8 @@
 import { readEnv } from "@parallax/config";
 import {
-  assertBuildAllowed,
   cashSession,
   decideJob,
+  evaluatePolicy,
   fetchCashPrints,
   fridayPrintFromCash,
   gapPct,
@@ -12,6 +12,7 @@ import {
   jobTickers,
   listUnderlyings,
   nextLastAt,
+  policyAllowsSend,
   RouterReject,
   snapshotRails,
 } from "@parallax/core";
@@ -130,9 +131,27 @@ async function runTick() {
             retryMs = 120_000;
             continue;
           }
-          assertBuildAllowed({ ...intent, actor: "agent", wallet: agent ?? intent.wallet }, settings, spentTodayUsdt(now));
           const rail = intent.railLock || book.best?.wrapper.rail;
           const row = book.books.find((item) => item.wrapper.rail === rail) || book.best;
+          const policy = evaluatePolicy({
+            source: "strategy",
+            mode: "execute",
+            now: now.getTime(),
+            intent: { ...intent, actor: "agent", wallet: agent ?? intent.wallet, railLock: rail },
+            settings,
+            spentToday: spentTodayUsdt(now),
+            quote: row?.best,
+            signer: agent,
+            reference: {
+              price: book.priorClose ?? book.fridayClose,
+              label: book.priorClose ? "prior cash close" : "Friday cash close",
+            },
+            requireSimulation: false,
+          });
+          if (!policyAllowsSend(policy)) {
+            notes.push(`${policy.verdict} ${policy.primary?.code || ""}: ${policy.primary?.human || "policy blocked"}`.trim());
+            continue;
+          }
           if (agent && row?.wrapper.address) {
             try {
               const sent = await sendAgentSwap({

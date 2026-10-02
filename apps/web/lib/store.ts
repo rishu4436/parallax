@@ -22,6 +22,7 @@ import {
   DEMO_SCENARIOS,
   type DemoScenario,
   type DemoScenarioId,
+  type ExecutionPassport,
 } from "@parallax/core";
 import type { BalanceReport, PrepareResult } from "@parallax/web3";
 
@@ -48,6 +49,15 @@ interface ConfirmDraft {
   result: PrepareResult | null;
   note?: string;
   actor: "user" | "agent";
+  passport?: ExecutionPassport | null;
+}
+
+export interface Notice {
+  id: string;
+  at: number;
+  kind: "info" | "up" | "down" | "warn" | "demo";
+  text: string;
+  demo?: boolean;
 }
 
 interface ParallaxState {
@@ -97,7 +107,11 @@ interface ParallaxState {
   armed: ArmedStrategy[];
   workerEnabled: boolean;
   fills: AgentFill[];
-  activity: Array<{ at: number; text: string; demo?: boolean }>;
+  activity: Array<{ at: number; text: string; demo?: boolean; passportHash?: string }>;
+  passport: ExecutionPassport | null;
+  notices: Notice[];
+  paletteOpen: boolean;
+  copilotOpen: boolean;
   demo: DemoScenario | null;
   wallet?: `0x${string}`;
   connectNonce: number;
@@ -105,6 +119,10 @@ interface ParallaxState {
   setWallet: (wallet?: `0x${string}`) => void;
   setCommand: (command: string) => void;
   setSettingsOpen: (open: boolean) => void;
+  setPaletteOpen: (open: boolean) => void;
+  setCopilotOpen: (open: boolean) => void;
+  notify: (text: string, kind?: Notice["kind"], demo?: boolean) => void;
+  dismissNotice: (id: string) => void;
   setView: (view: "trade" | "jobs" | "wallet") => void;
   setAnalyzeOpen: (open: boolean) => void;
   setUsdt: (usdt: string) => void;
@@ -123,7 +141,7 @@ interface ParallaxState {
   pauseJob: (id: string, paused: boolean) => Promise<void>;
   pushTape: (row: TapeRow) => Promise<void>;
   loadCandles: (address: string) => Promise<void>;
-  pushActivity: (text: string, demo?: boolean) => void;
+  pushActivity: (text: string, demo?: boolean, passportHash?: string) => void;
   setDemo: (id: DemoScenarioId | null) => void;
 }
 
@@ -178,21 +196,36 @@ export const useParallax = create<ParallaxState>((set, get) => ({
   workerEnabled: true,
   fills: [],
   activity: [],
+  passport: null,
+  notices: [],
+  paletteOpen: false,
+  copilotOpen: false,
   demo: null,
   connectNonce: 0,
-  pushActivity: (text, demo) => {
-    const row = { at: Date.now(), text, demo };
+  setPaletteOpen: (open) => set({ paletteOpen: open }),
+  setCopilotOpen: (open) => set({ copilotOpen: open }),
+  notify: (text, kind = "info", demo) => {
+    const prev = get().notices[0];
+    if (prev && prev.text === text && Date.now() - prev.at < 8_000) return;
+    const notice: Notice = { id: crypto.randomUUID(), at: Date.now(), kind, text, demo };
+    set({ notices: [notice, ...get().notices].slice(0, 5) });
+  },
+  dismissNotice: (id) => set({ notices: get().notices.filter((row) => row.id !== id) }),
+  pushActivity: (text, demo, passportHash) => {
+    const row = { at: Date.now(), text, demo, passportHash };
     set({ activity: [row, ...get().activity].slice(0, 40) });
   },
   setDemo: (id) => {
     if (!id) {
       set({ demo: null });
       get().pushActivity("Demo mode off. Showing live Binance quotes.");
+      get().notify("Demo mode off. Showing live Binance quotes.", "info");
       return;
     }
     const scenario = DEMO_SCENARIOS.find((row) => row.id === id) || null;
     set({ demo: scenario, ticker: "NVDA", analyzeOpen: true });
     get().pushActivity(`DEMO DATA · ${scenario?.label}`, true);
+    get().notify(`DEMO DATA · ${scenario?.label}`, "demo", true);
     if (id === "gap-closed") {
       get().pushActivity("DEMO · US market closed", true);
       get().pushActivity("DEMO · Gap detected +1.54%", true);
@@ -224,6 +257,7 @@ export const useParallax = create<ParallaxState>((set, get) => ({
     const res = await post<{
       ok: boolean;
       message?: string;
+      passport?: ExecutionPassport | null;
       book?: {
         books: RailBook[];
         best: RailBook | null;
@@ -239,7 +273,9 @@ export const useParallax = create<ParallaxState>((set, get) => ({
       };
     }>("/api/quote", { ticker, usdt, side, wallet, railLock: lockedRail });
     if (!res.ok || !res.book) {
-      set({ quoting: false, quoteError: res.message || "Quote failed", books: [], best: null });
+      const message = res.message || "Quote failed";
+      set({ quoting: false, quoteError: message, books: [], best: null, passport: res.passport ?? null });
+      get().notify(message, "down");
       return;
     }
     set({
@@ -256,8 +292,14 @@ export const useParallax = create<ParallaxState>((set, get) => ({
       sessionOpenDate: res.book.sessionOpenDate ?? null,
       quoteAt: Date.now(),
       ticker: res.book.underlying.ticker,
+      passport: res.passport ?? null,
     });
-    get().pushActivity(`Quote ${res.book.underlying.ticker} · ${res.book.best?.wrapper.symbol || "no open rail"}`);
+    const hash = res.passport?.hash;
+    get().pushActivity(
+      `Quote ${res.book.underlying.ticker} · ${res.book.best?.wrapper.symbol || "no open rail"}${hash ? ` · ${hash.slice(0, 12)}` : ""}`,
+      false,
+      hash,
+    );
     const active = res.book.books.find((book) => book.wrapper.rail === get().lockedRail) || res.book.best;
     if (active) void get().loadCandles(active.wrapper.address);
   },
@@ -384,7 +426,7 @@ export const useParallax = create<ParallaxState>((set, get) => ({
       actor,
     };
     set({ confirm: draft, side, lockedRail: book.wrapper.rail });
-    const res = await post<PrepareResult & { ok: boolean; message?: string; step?: string }>("/api/prepare", {
+    const res = await post<PrepareResult & { ok: boolean; message?: string; step?: string; passport?: ExecutionPassport }>("/api/prepare", {
       intent: {
         ticker: get().ticker,
         side,
@@ -396,7 +438,13 @@ export const useParallax = create<ParallaxState>((set, get) => ({
       },
       quote,
     });
-    set({ confirm: { ...draft, preparing: false, result: res, note: res.message } });
+    set({
+      confirm: { ...draft, preparing: false, result: res, note: res.message, passport: res.passport },
+      passport: res.passport ?? get().passport,
+    });
+    if (res.passport) {
+      get().pushActivity(`Passport ${res.passport.state} · ${res.passport.hash.slice(0, 12)}`, false, res.passport.hash);
+    }
     if (res.step === "rejected" && res.message === WALLET_MISMATCH) await get().requoteConfirm();
   },
   requoteConfirm: async () => {
@@ -418,7 +466,7 @@ export const useParallax = create<ParallaxState>((set, get) => ({
       });
       return;
     }
-    const res = await post<PrepareResult & { message?: string }>("/api/prepare", {
+    const res = await post<PrepareResult & { message?: string; passport?: ExecutionPassport }>("/api/prepare", {
       intent: {
         ticker: get().ticker,
         side: current.side,
@@ -438,8 +486,13 @@ export const useParallax = create<ParallaxState>((set, get) => ({
         result: res,
         note: "message" in res ? res.message : undefined,
         requestId: current.requestId,
+        passport: res.passport,
       },
+      passport: res.passport ?? get().passport,
     });
+    if (res.passport) {
+      get().pushActivity(`Passport ${res.passport.state} · ${res.passport.hash.slice(0, 12)}`, false, res.passport.hash);
+    }
   },
   closeConfirm: () => set({ confirm: null }),
   setConfirmResult: (result, note) => {
@@ -465,6 +518,11 @@ export const useParallax = create<ParallaxState>((set, get) => ({
   pushTape: async (row) => {
     const res = await post<{ tape: TapeRow[] }>("/api/tape", row);
     set({ tape: res.tape || [row, ...get().tape].slice(0, 30) });
+    if (row.status === "filled" || row.status === "failed" || row.status === "submitted") {
+      const kind = row.status === "failed" ? "down" : row.status === "filled" ? "up" : "info";
+      get().notify(`${row.side} ${row.symbol} ${row.status}${row.txHash ? ` · ${row.txHash.slice(0, 8)}` : ""}`, kind);
+      get().pushActivity(`${row.side} ${row.symbol} ${row.status}`, false, row.passportHash);
+    }
   },
   loadCandles: async (address) => {
     const res = await fetch(`/api/kline?address=${address}`);

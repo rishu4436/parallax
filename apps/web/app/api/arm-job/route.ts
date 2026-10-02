@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { AgentStrategyType, ArmedStrategy } from "@parallax/core";
-import { readArmed, readSettings, writeArmed, writeWorkerEnabled } from "@parallax/core/persist";
+import { readEnv } from "@parallax/config";
+import { evaluatePolicy, policyPublic, type AgentStrategyType, type ArmedStrategy } from "@parallax/core";
+import { readArmed, readSettings, spentTodayUsdt, writeArmed, writeWorkerEnabled } from "@parallax/core/persist";
 import { fail, readJson } from "@/lib/http";
 
 const NAMES: Record<AgentStrategyType, string> = {
@@ -52,9 +53,23 @@ export async function POST(request: Request) {
     }
     const settings = readSettings();
     const usdt = (body.usdt || String(Math.min(10, settings.orderCapUsdt))).trim();
-    const size = Number(usdt);
-    if (!Number.isFinite(size) || size <= 0) return Response.json({ ok: false, message: "Size must be greater than zero." });
-    if (size > settings.orderCapUsdt) return Response.json({ ok: false, message: `Order cap is ${settings.orderCapUsdt} USDT.` });
+    const env = readEnv();
+    const preview = evaluatePolicy({
+      source: "strategy",
+      mode: "preview",
+      intent: {
+        ticker: assetPairs[0],
+        side: "buy",
+        usdt,
+        wallet: env.quoteWallet,
+        actor: "agent",
+      },
+      settings,
+      spentToday: spentTodayUsdt(),
+    });
+    if (preview.verdict === "BLOCK") {
+      return Response.json({ ok: false, message: preview.primary?.human || "Policy blocked this job.", policy: policyPublic(preview) });
+    }
 
     let ratio: number | undefined;
     let drift: number | undefined;

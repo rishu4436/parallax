@@ -1,22 +1,14 @@
 "use client";
 
 import { formatPct, formatPx, type OpportunityCard } from "@parallax/core";
-import { useEffect } from "react";
 import { useParallax } from "@/lib/store";
 
 export function OpportunityEngine() {
   const cards = useParallax((s) => s.opportunities);
   const scanning = useParallax((s) => s.scanning);
-  const refreshScan = useParallax((s) => s.refreshScan);
   const selectTicker = useParallax((s) => s.selectTicker);
   const setAnalyzeOpen = useParallax((s) => s.setAnalyzeOpen);
   const ticker = useParallax((s) => s.ticker);
-
-  useEffect(() => {
-    void refreshScan();
-    const id = setInterval(() => void refreshScan(), 40_000);
-    return () => clearInterval(id);
-  }, [refreshScan]);
 
   const ranked = cards.filter((row) => row.status === "OPEN" && Math.abs(row.netPct) > 0);
   const shown = (ranked.length ? ranked : cards).slice(0, 6);

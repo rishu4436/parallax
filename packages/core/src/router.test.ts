@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bookFromRoutes, confirmGate, isRfqExecution, isRfqRoute, needsSignerQuote, pickBest, assertBuildAllowed, RouterReject, scoreQuote, signerMatchesQuote } from "./router";
+import { bookFromRoutes, isRfqExecution, isRfqRoute, needsSignerQuote, pickBest, RouterReject, scoreQuote, signerMatchesQuote } from "./router";
+import { assertBuildAllowed, confirmGate } from "./policy";
 import { resolveQuery } from "./registry";
 import type { RailBook, Settings, VenueQuote, Wrapper } from "./types";
 import { COPY } from "./types";

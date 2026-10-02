@@ -1,4 +1,7 @@
 export * from "./types";
+export * from "./canonical";
+export * from "./passport";
+export * from "./policy";
 export * from "./amounts";
 export * from "./session";
 export * from "./registry";

@@ -4,17 +4,28 @@
 
 :root,
 html[data-session="open"] {
-  --bg: #07080a;
-  --raised: #0c0e12;
-  --line: #1c2028;
-  --text: #f4f1ea;
-  --dim: #8b909a;
-  --gold: #f0b90b;
-  --gold-dim: #c9a227;
-  --up: #3ddc97;
-  --down: #e85d6c;
+  --bg: 7 8 10;
+  --raised: 12 14 18;
+  --raised-2: 16 19 26;
+  --line: 28 32 40;
+  --line-strong: 42 46 56;
+  --ink: 244 241 234;
+  --muted: 200 196 186;
+  --dim: 139 144 154;
+  --gold: 240 185 11;
+  --gold-dim: 201 162 39;
+  --up: 61 220 151;
+  --down: 232 93 108;
+  --warn: 232 184 109;
   --fog: none;
   --plate: rgba(244, 241, 234, 0.035);
+  --overlay: 0.88;
+  --shadow-menu: 0 12px 40px rgba(0, 0, 0, 0.45);
+  --motion-micro: 80ms;
+  --motion-ui: 150ms;
+  --motion-overlay: 220ms;
+  --motion-skeleton: 1200ms;
+  --radius: 0px;
   color-scheme: dark;
 }
 
@@ -31,8 +42,8 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  background: var(--bg);
-  color: var(--text);
+  background: rgb(var(--bg));
+  color: rgb(var(--ink));
 }
 
 body {
@@ -45,9 +56,11 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: inherit;
+  border-radius: var(--radius);
 }
 
 button {
@@ -55,8 +68,8 @@ button {
 }
 
 ::selection {
-  background: rgba(240, 185, 11, 0.28);
-  color: #f4f1ea;
+  background: rgb(var(--gold) / 0.28);
+  color: rgb(var(--ink));
 }
 
 .num {
@@ -73,7 +86,7 @@ button {
   font-size: 10px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: rgb(var(--dim));
 }
 
 .fog-target {
@@ -81,7 +94,224 @@ button {
 }
 
 .hair {
-  border-color: var(--line);
+  border-color: rgb(var(--line));
+}
+
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 2.75rem;
+    padding: 0 0.75rem;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    transition: background-color var(--motion-ui) ease, border-color var(--motion-ui) ease, color var(--motion-ui) ease,
+      opacity var(--motion-ui) ease;
+  }
+
+  .btn:focus-visible {
+    outline: 1px solid rgb(var(--gold));
+    outline-offset: 2px;
+  }
+
+  .btn:disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  .btn-sm {
+    height: 2.25rem;
+  }
+
+  .btn-lg {
+    height: 3rem;
+    letter-spacing: 0.2em;
+  }
+
+  .btn-primary {
+    background: rgb(var(--gold));
+    color: rgb(var(--bg));
+  }
+
+  .btn-primary:hover {
+    background: rgb(var(--gold-dim));
+  }
+
+  .btn-secondary {
+    border-color: rgb(var(--line));
+    background: transparent;
+    color: rgb(var(--ink));
+  }
+
+  .btn-secondary:hover {
+    border-color: rgb(var(--gold));
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: rgb(var(--dim));
+    letter-spacing: 0.14em;
+  }
+
+  .btn-ghost:hover {
+    color: rgb(var(--ink));
+  }
+
+  .btn-danger {
+    border-color: rgb(var(--down) / 0.5);
+    background: transparent;
+    color: rgb(var(--down));
+  }
+
+  .btn-buy {
+    border-color: rgb(var(--up) / 0.4);
+    color: rgb(var(--up));
+  }
+
+  .btn-sell {
+    border-color: rgb(var(--down) / 0.4);
+    color: rgb(var(--down));
+  }
+
+  .field {
+    width: 100%;
+    height: 2.5rem;
+    border: 1px solid rgb(var(--line));
+    background: transparent;
+    padding: 0 0.5rem;
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color var(--motion-ui) ease;
+  }
+
+  .field:focus {
+    border-color: rgb(var(--gold));
+  }
+
+  .field-error {
+    border-color: rgb(var(--down));
+  }
+
+  .field-numeric {
+    font-variant-numeric: tabular-nums lining-nums;
+    text-align: right;
+  }
+
+  .field-command {
+    height: 2.5rem;
+    border: 0;
+    border-bottom: 1px solid rgb(var(--line));
+    background: transparent;
+    padding: 0 0.25rem;
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color var(--motion-ui) ease;
+  }
+
+  .field-command:focus {
+    border-color: rgb(var(--gold));
+  }
+
+  .field-command::placeholder,
+  .field::placeholder {
+    color: rgb(var(--dim));
+  }
+
+  .panel {
+    border: 1px solid rgb(var(--line));
+    background: rgb(var(--bg));
+    padding: 1rem;
+  }
+
+  .panel-flagged {
+    border-color: rgb(var(--gold) / 0.4);
+  }
+
+  .table {
+    width: 100%;
+    text-align: left;
+    font-size: 12px;
+  }
+
+  .table th {
+    font-weight: 400;
+    color: rgb(var(--dim));
+    padding-bottom: 0.25rem;
+  }
+
+  .table td {
+    border-top: 1px solid rgb(var(--line));
+    padding: 0.375rem 0;
+  }
+
+  .skeleton {
+    display: block;
+    background: rgb(var(--ink) / 0.06);
+    border-radius: var(--radius);
+    animation: skeleton-pulse var(--motion-skeleton) ease-in-out infinite;
+  }
+
+  .state-error {
+    font-size: 0.75rem;
+    color: rgb(var(--down));
+  }
+
+  .state-empty {
+    font-size: 0.875rem;
+    color: rgb(var(--dim));
+  }
+
+  .state-stale {
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgb(var(--gold));
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .badge-open {
+    color: rgb(var(--up));
+  }
+
+  .badge-closed,
+  .badge-failed {
+    color: rgb(var(--down));
+  }
+
+  .badge-halted,
+  .badge-pending {
+    color: rgb(var(--warn));
+  }
+
+  .badge-offline {
+    color: rgb(var(--dim));
+  }
+
+  .badge-demo {
+    color: rgb(var(--gold));
+  }
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.8;
+  }
 }
 
 ::-webkit-scrollbar {
@@ -90,7 +320,7 @@ button {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2e38;
+  background: rgb(var(--line-strong));
 }
 
 @media (prefers-reduced-motion: reduce) {

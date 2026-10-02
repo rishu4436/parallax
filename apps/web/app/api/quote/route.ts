@@ -1,6 +1,6 @@
 import { readEnv } from "@parallax/config";
-import { adviseDesk, cashSession, deskSignals, strategyPlan } from "@parallax/core";
-import { readJobs, readSettings, spentTodayUsdt, writeFriday } from "@parallax/core/persist";
+import { adviseDesk, cashSession, deskSignals, passportFromBook, policyPublic, strategyPlan } from "@parallax/core";
+import { readJobs, readSettings, spentTodayUsdt, writeFriday, writePassport } from "@parallax/core/persist";
 import { quoteIntent } from "@parallax/web3";
 import { fail, readJson } from "@/lib/http";
 
@@ -15,16 +15,15 @@ export async function POST(request: Request) {
     }>(request);
     const env = readEnv();
     const settings = readSettings();
-    const book = await quoteIntent(
-      {
-        ticker: (body.ticker || "NVDA").toUpperCase(),
-        usdt: body.usdt || "10",
-        side: body.side === "sell" ? "sell" : "buy",
-        wallet: body.wallet || env.quoteWallet,
-        railLock: body.railLock,
-      },
-      { slip: true, allowed: settings.allowedRails },
-    );
+    const intent = {
+      ticker: (body.ticker || "NVDA").toUpperCase(),
+      usdt: body.usdt || "10",
+      side: (body.side === "sell" ? "sell" : "buy") as "buy" | "sell",
+      wallet: body.wallet || env.quoteWallet,
+      railLock: body.railLock,
+      actor: "user" as const,
+    };
+    const book = await quoteIntent(intent, { slip: true, allowed: settings.allowedRails });
     if (book.fridayClose && book.fridayDate && book.fridaySource) {
       writeFriday(book.underlying.ticker, {
         ticker: book.underlying.ticker,
@@ -56,14 +55,25 @@ export async function POST(request: Request) {
       sessionOpenDate: book.sessionOpenDate,
     });
     const advice = adviseDesk(signals, jobs);
+    const spentToday = spentTodayUsdt();
     const plan = strategyPlan({
       signals,
       jobs,
       orderCapUsdt: settings.orderCapUsdt,
       dailyCapUsdt: settings.dailyCapUsdt,
-      spentToday: spentTodayUsdt(),
+      spentToday,
     });
-    return Response.json({ ok: true, book, advice, plan, session });
+    const passport = passportFromBook({ intent, book, settings, spentToday, source: "ui", signer: intent.wallet });
+    if (passport) writePassport(passport);
+    return Response.json({
+      ok: true,
+      book,
+      advice,
+      plan,
+      session,
+      passport,
+      policy: passport?.gate ? policyPublic(passport.gate) : null,
+    });
   } catch (err) {
     return fail(err);
   }

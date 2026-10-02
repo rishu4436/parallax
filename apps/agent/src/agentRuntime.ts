@@ -5,15 +5,21 @@ import {
   createStrategy,
   gapPct,
   getUnderlying,
+  issuePassport,
+  passportFromBook,
+  policyAllowsSend,
+  referenceFromBook,
+  shortPassportHash,
   wrapperList,
   type AgentFill,
   type ArmedStrategy,
   type DeskStrategy,
+  type ExecutionPassport,
   type Rail,
   type Settings,
   type Side,
 } from "@parallax/core";
-import { pushFill, readArmed, readWorkerEnabled, spentTodayUsdt, upsertTape, writeArmed } from "@parallax/core/persist";
+import { pushFill, readArmed, readWorkerEnabled, spentTodayUsdt, upsertTape, writeArmed, writePassport } from "@parallax/core/persist";
 import {
   fetchBnbMarket,
   fetchMarketPrint,
@@ -54,6 +60,7 @@ function noteFill(row: ArmedStrategy, input: {
   x402Detail: string;
   txHash?: string;
   sent: boolean;
+  passportHash?: string;
 }): void {
   stamp(row, input.note, input.sent);
   fill({
@@ -69,7 +76,16 @@ function noteFill(row: ArmedStrategy, input: {
     status: input.status,
     txHash: input.txHash,
     note: input.note,
+    passportHash: input.passportHash,
   });
+}
+
+const PASSPORT_BLOCK = new Set(["rejected", "expired", "rail_closed", "offline", "sim_failed"]);
+
+function rememberPassport(input: Parameters<typeof issuePassport>[0]): ExecutionPassport {
+  const passport = issuePassport(input);
+  writePassport(passport);
+  return passport;
 }
 
 async function legPrint(ticker: string, rail: Rail) {
@@ -147,7 +163,31 @@ async function broadcast(row: ArmedStrategy, strategy: DeskStrategy, ticker: str
   const preferred = rail ? book.books.find((item) => item.wrapper.rail === rail) : null;
   const chosen = preferred?.best?.ok ? preferred : book.best;
   const quote = chosen?.best;
+  const spentToday = spentTodayUsdt();
+  const intent = {
+    ticker,
+    side: strategy.side,
+    usdt: row.usdt,
+    railLock: quote?.wrapper.rail ?? rail,
+    vendorLock: quote?.vendorName,
+    wallet: agent,
+    actor: "agent" as const,
+  };
+
   if (!quote?.ok) {
+    const passport = quote
+      ? rememberPassport({
+          intent,
+          quote,
+          underlying: { ticker: book.underlying.ticker, name: book.underlying.name },
+          reference: referenceFromBook(book),
+          settings,
+          spentToday,
+          source: "agentic",
+          signer: agent,
+        })
+      : passportFromBook({ intent, book, settings, spentToday, source: "agentic", signer: agent });
+    if (passport) writePassport(passport);
     noteFill(row, {
       ticker,
       side: strategy.side,
@@ -158,6 +198,7 @@ async function broadcast(row: ArmedStrategy, strategy: DeskStrategy, ticker: str
       x402,
       x402Detail,
       sent: false,
+      passportHash: passport?.hash,
     });
     return;
   }
@@ -173,21 +214,43 @@ async function broadcast(row: ArmedStrategy, strategy: DeskStrategy, ticker: str
       actor: "agent",
     },
     settings,
-    spentToday: spentTodayUsdt(),
+    spentToday,
     quote,
+    source: "agentic",
+    reference: referenceFromBook(book),
   });
+  const liveQuote = "quote" in prepared && prepared.quote ? prepared.quote : quote;
+  const passport = rememberPassport({
+    intent: { ...intent, railLock: liveQuote.wrapper.rail, vendorLock: liveQuote.vendorName },
+    quote: liveQuote,
+    underlying: { ticker: book.underlying.ticker, name: book.underlying.name },
+    reference: referenceFromBook(book),
+    settings,
+    spentToday,
+    prepare: prepared,
+    source: "agentic",
+    signer: agent,
+  });
+  const allowed = passport.gate ? policyAllowsSend(passport.gate) : false;
 
-  if (prepared.step === "rejected" || prepared.step === "expired") {
+  if (prepared.step === "rejected" || prepared.step === "expired" || PASSPORT_BLOCK.has(passport.state) || !allowed) {
+    const policyNote = passport.gate?.primary
+      ? `${passport.gate.verdict} ${passport.gate.primary.code}: ${passport.gate.primary.human}`
+      : `passport ${passport.state} ${shortPassportHash(passport.hash)} · ${passport.reason}`;
     noteFill(row, {
       ticker,
       side: strategy.side,
       status: "skipped",
-      note: prepared.message,
+      note:
+        prepared.step === "rejected" || prepared.step === "expired"
+          ? prepared.message
+          : policyNote,
       spreadPct: strategy.spreadPct,
       gasUsd: quote.gasUsd,
       x402,
       x402Detail,
       sent: false,
+      passportHash: passport.hash,
     });
     return;
   }
@@ -205,6 +268,7 @@ async function broadcast(row: ArmedStrategy, strategy: DeskStrategy, ticker: str
         x402,
         x402Detail,
         sent: false,
+        passportHash: passport.hash,
       });
       return;
     }
@@ -233,13 +297,14 @@ async function broadcast(row: ArmedStrategy, strategy: DeskStrategy, ticker: str
     ticker,
     side: strategy.side,
     status: failed ? "failed" : submitted ? "filled" : "skipped",
-    note: `${sent.note}${simulated} · spread ${strategy.spreadPct.toFixed(2)}% · gas ${quote.gasUsd.toFixed(4)} · x402 ${x402Detail}`,
+    note: `${sent.note}${simulated} · spread ${strategy.spreadPct.toFixed(2)}% · gas ${quote.gasUsd.toFixed(4)} · x402 ${x402Detail} · passport ${shortPassportHash(passport.hash)}`,
     spreadPct: strategy.spreadPct,
     gasUsd: quote.gasUsd,
     x402,
     x402Detail,
     txHash: sent.txHash,
     sent: submitted || sent.pending,
+    passportHash: passport.hash,
   });
   if (submitted || failed) {
     upsertTape({
@@ -255,6 +320,7 @@ async function broadcast(row: ArmedStrategy, strategy: DeskStrategy, ticker: str
       orderId: sent.orderId,
       vendorName: quote.vendorName,
       source: "agent",
+      passportHash: passport.hash,
     });
   }
 }
