@@ -13,6 +13,7 @@ const STATIC = [
   { label: "Overview", run: "/" },
   { label: "Markets", run: "/markets" },
   { label: "Opportunities", run: "/opportunities" },
+  { label: "Agents", run: "/agents" },
   { label: "Trade", run: "trade" },
   { label: "Jobs", run: "jobs" },
   { label: "Wallet", run: "wallet" },
