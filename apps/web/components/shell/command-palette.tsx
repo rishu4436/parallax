@@ -15,6 +15,7 @@ const STATIC = [
   { label: "Opportunities", run: "/opportunities" },
   { label: "Portfolio", run: "/portfolio" },
   { label: "Activity", run: "/activity" },
+  { label: "Strategies", run: "/strategies" },
   { label: "Agents", run: "/agents" },
   { label: "Trade", run: "trade" },
   { label: "Jobs", run: "jobs" },

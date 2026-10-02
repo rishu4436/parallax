@@ -1,10 +1,10 @@
 "use client";
 
-import { formatPct, formatPx, jobFromStrategy, STRATEGY_CATALOG, strategyById, type AgentFill, type AgentStrategyType, type ArmedStrategy, type StrategyId } from "@parallax/core";
+import { formatPct, formatPx, jobFromStrategy, STRATEGY_CATALOG, strategyById, validateStrategyInput, type AgentFill, type AgentStrategyType, type ArmedStrategy, type StrategyId } from "@parallax/core";
 import { useEffect, useRef, useState } from "react";
 import { useParallax } from "@/lib/store";
 
-type StrategyPick = StrategyId | AgentStrategyType;
+export type StrategyPick = StrategyId | AgentStrategyType;
 
 const OPTIONS: Array<{ id: StrategyPick; label: string }> = [
   ...STRATEGY_CATALOG.map((card) => ({ id: card.id, label: card.name })),
@@ -79,7 +79,7 @@ export function AgentExecutionLog({ initial }: { initial: AgentFill[] }) {
   );
 }
 
-export function StrategyArm() {
+export function StrategyArm({ preset }: { preset?: StrategyPick } = {}) {
   const ticker = useParallax((s) => s.ticker);
   const usdtDesk = useParallax((s) => s.usdt);
   const armed = useParallax((s) => s.armed);
@@ -102,14 +102,28 @@ export function StrategyArm() {
     setPair(ticker);
   }, [ticker]);
 
+  useEffect(() => {
+    if (preset) setType(preset);
+  }, [preset]);
+
   async function arm() {
+    if (settings?.killSwitch) {
+      setNote("KILL SWITCH ON. ARMING DISABLED.");
+      return;
+    }
+    const tickerName = pair.split(/[,\s]+/).find(Boolean) || ticker;
+    const check = validateStrategyInput({
+      id: isAgentType(type) ? "dca" : type,
+      ticker: tickerName,
+      usdt,
+      orderCap: settings?.orderCapUsdt,
+    });
+    if (!check.ok) {
+      setNote(check.message);
+      return;
+    }
     if (!isAgentType(type)) {
-      const size = Number(usdt);
-      if (settings && (!Number.isFinite(size) || size <= 0 || size > settings.orderCapUsdt)) {
-        setNote(settings ? `Order cap is ${settings.orderCapUsdt} USDT.` : "Size must be greater than zero.");
-        return;
-      }
-      const job = jobFromStrategy(type, { ticker: pair.split(/[,\s]+/).find(Boolean) || ticker, usdt });
+      const job = jobFromStrategy(type, { ticker: tickerName, usdt });
       if (!job) {
         setNote("That card explains the session. It does not arm a job.");
         return;

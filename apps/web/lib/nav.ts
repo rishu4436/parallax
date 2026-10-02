@@ -5,11 +5,12 @@ export const NAV = [
   { href: "/markets", id: "markets", label: "Markets", kicker: "02" },
   { href: "/opportunities", id: "opportunities", label: "Opportunities", kicker: "03" },
   { href: "/portfolio", id: "portfolio", label: "Portfolio", kicker: "04" },
-  { href: "/agents", id: "agents", label: "Agents", kicker: "05" },
-  { href: "/activity", id: "activity", label: "Activity", kicker: "06" },
-  { href: "/desk", id: "trade", label: "Trade", kicker: "07" },
-  { href: "/jobs", id: "jobs", label: "Jobs", kicker: "08" },
-  { href: "/wallet", id: "wallet", label: "Wallet", kicker: "09" },
+  { href: "/strategies", id: "strategies", label: "Strategies", kicker: "05" },
+  { href: "/agents", id: "agents", label: "Agents", kicker: "06" },
+  { href: "/activity", id: "activity", label: "Activity", kicker: "07" },
+  { href: "/desk", id: "trade", label: "Trade", kicker: "08" },
+  { href: "/jobs", id: "jobs", label: "Jobs", kicker: "09" },
+  { href: "/wallet", id: "wallet", label: "Wallet", kicker: "10" },
 ] as const;
 
 export function hrefForView(view: DeskView): string {
