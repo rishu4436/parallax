@@ -359,7 +359,7 @@ These are leftover or overlapping. Replace or delete in a later change; do not w
 | --- | --- |
 | `build-panel.tsx`, `left-rail.tsx`, `weekend-dock.tsx`, `top-bar.tsx` | Removed. They were not mounted. The shell is `Sidebar`, `CommandBar`, and `MobileNav`. |
 | Dual opportunity UIs | `OpportunityEngine` (universe scan) and `OpportunityBoard` (selected ticker) overlap in language. Keep both roles; do not add a third “gap” card. |
-| `COPY.strategies` and `docs/STRATEGIES.md` “worker never signs” | False once `baw` is CONNECTED. Catalog jobs and armed loops send. Copy must match `apps/agent`. |
+| Worker copy | `docs/STRATEGIES.md` now says a connected Agentic Wallet can send. `decideJob` still only emits intents. |
 | `DeskAdapters` in `adapters.ts` | Interface only. Live code calls `@parallax/web3` directly. Either implement adapters or stop implying a seam. |
 | README MCP list | Missing `parallax_advise`. Studio vs stdio MCP are conflated in prose. |
 | `PARALLAX_BASE` | Defaults to `http://127.0.0.1:3000`, the desk port. Override when the desk is elsewhere. |
@@ -395,7 +395,7 @@ These are leftover or overlapping. Replace or delete in a later change; do not w
 
 13. **Test coverage is domain-heavy, UI-light.** `pnpm test` runs session, router, jobs, strategies, friday, settings, plainRule, plan, loops, opportunity, copilot, flag, web3 client, rwa, execute. No tests for confirm-takeover, API routes, store, MCP, or Studio `parallaxWork`.
 
-14. **Docs drift.** README still says jobs “stop at an unsigned intent.” Worker sends when CONNECTED. Leftover “Ondo is RFQ-only” / “cash prints are Yahoo bars” language is a scoring risk against live books.
+14. **Docs.** README, `docs/ARCHITECTURE.md`, and `docs/STRATEGIES.md` match the current routes. `executionMode` on the route is authoritative. Yahoo and Stooq remain fallbacks, not the primary cash print.
 
 15. **Identity vs density.** Trade column now stacks session, board, why, hero, comparison, ticket, venues. Risk of repeating the same gap three times. Prefer one GROSS/NET authority (board + ticket) and keep hero as identity.
 
