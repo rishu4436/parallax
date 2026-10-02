@@ -59,13 +59,22 @@ async function scan(usdt: string) {
           } catch {
             liquidity = 0;
           }
+          const facts = {
+            quoteExpiresAt: quote?.quoteExpiresAt,
+            networkFeeUsd: quote?.networkFeeUsd ?? null,
+            gasEstimateUsd: quote?.gasEstimateUsd ?? null,
+            estimatedGasUnits: quote?.estimatedGasUnits ?? null,
+            priceImpactPct: quote?.priceImpactPct ?? null,
+            tradeFeeUsd: quote?.tradeFeeUsd ?? null,
+            multiplier: row.wrapper.multiplier,
+          };
           if (!quote?.ok || !reference || !(notional > 0)) {
             cards.push({
               ticker: underlying.ticker,
               name: underlying.name,
               rail: row.wrapper.rail,
               symbol: row.wrapper.symbol,
-              perShare: quote?.perShare || 0,
+              perShare: quote?.ok ? quote.perShare : 0,
               reference: reference || 0,
               referenceLabel,
               grossPct: 0,
@@ -78,7 +87,8 @@ async function scan(usdt: string) {
               status: row.status,
               vendor: quote?.vendorName,
               mode: quote?.executionMode,
-              errorText: row.errorText,
+              errorText: row.errorText || quote?.errorText,
+              ...facts,
             });
             continue;
           }
@@ -109,6 +119,7 @@ async function scan(usdt: string) {
             status: row.status,
             vendor: quote.vendorName,
             mode: quote.executionMode,
+            ...facts,
           });
         }
       } catch {

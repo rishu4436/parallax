@@ -8,6 +8,9 @@ export type CopilotIntent =
   | { type: "net"; minAbsPct: number }
   | { type: "low-slip"; maxSlipPct: number }
   | { type: "compare"; ticker: string }
+  | { type: "cheapest"; ticker?: string }
+  | { type: "reference"; ticker?: string }
+  | { type: "changed"; ticker?: string }
   | { type: "why" }
   | { type: "simulate"; ticker?: string }
   | { type: "buy"; usdt: string; ticker?: string; prefer: "liquidity" | "net" }
@@ -48,6 +51,8 @@ export function parseCopilot(text: string): CopilotIntent {
   if (!q) return { type: "help" };
   if (/strateg|arm |watch/.test(q)) return { type: "strategy", ticker: tickerIn(q) || "NVDA", minAbsPct: pctIn(q, 1) };
   if (/why|flag|reason|explain/.test(q)) return { type: "why" };
+  if (/what changed|changed on/.test(q)) return { type: "changed", ticker: tickerIn(q) };
+  if (/cheapest|lowest executable|lowest available/.test(q)) return { type: "cheapest", ticker: tickerIn(q) };
   if (/simulat/.test(q)) return { type: "simulate", ticker: tickerIn(q) };
   if (/compar/.test(q)) return { type: "compare", ticker: tickerIn(q) || "NVDA" };
   if (/liquid/.test(q) && !/buy|sell/.test(q)) return { type: "liquidity", ticker: tickerIn(q) || "NVDA" };
@@ -59,6 +64,7 @@ export function parseCopilot(text: string): CopilotIntent {
   }
   if (/net edge|net opportunity/.test(q)) return { type: "net", minAbsPct: pctIn(q, 0.75) };
   if (/away|gap|premium|discount|dislocat|more than|above/.test(q)) return { type: "gap", minAbsPct: pctIn(q, 1) };
+  if (/reference price|prior close|friday close/.test(q)) return { type: "reference", ticker: tickerIn(q) };
   if (tickerIn(q)) return { type: "compare", ticker: tickerIn(q)! };
   return { type: "help" };
 }
@@ -67,6 +73,16 @@ export interface CopilotReply {
   text: string;
   cards: OpportunityCard[];
   action?: { ticker: string; rail?: Rail; side?: Side; usdt?: string; analyze?: boolean; simulate?: boolean; arm?: boolean; minNetPct?: number };
+}
+
+function brief(answer: string, evidence: string[], action?: string): string {
+  const lines = ["ANSWER", answer, "", "EVIDENCE", ...(evidence.length ? evidence : ["No live quote on this book."])];
+  if (action) lines.push("", "ACTION", action);
+  return lines.join("\n");
+}
+
+function livePrice(row: OpportunityCard): string {
+  return row.perShare > 0 ? formatPx(row.perShare) : "—";
 }
 
 export function answerCopilot(
@@ -84,20 +100,74 @@ export function answerCopilot(
   if (intent.type === "why") {
     const row = focus?.symbol ? open.find((item) => item.symbol === focus.symbol) : bestExecutable(open.filter((item) => !focus || item.ticker === focus.ticker));
     if (!row) {
-      return { text: "Nothing is flagged. An OPEN rail with a non-zero net edge after slip and gas would show here.", cards: [] };
+      return { text: brief("Nothing is flagged.", ["An OPEN rail with a measured net edge would show here."]), cards: [] };
+    }
+    const reference = row.reference > 0 ? `${row.referenceLabel} ${formatPx(row.reference)}` : "REFERENCE UNAVAILABLE";
+    return {
+      text: brief(
+        `${row.symbol} is flagged on a ${formatPct(row.netPct)} net edge.`,
+        [
+          `Gross ${formatPct(row.grossPct)} versus ${reference}.`,
+          `Slip ${row.complete ? formatPct(row.slipPct) : "unknown"}. Gas ${formatPct(row.costPct)}.`,
+        ],
+        `Analyze ${row.symbol}`,
+      ),
+      cards: [row],
+      action: { ticker: row.ticker, rail: row.rail, analyze: true },
+    };
+  }
+  if (intent.type === "cheapest") {
+    const ticker = intent.ticker || focus?.ticker;
+    const pool = open.filter((row) => (!ticker || row.ticker === ticker) && row.perShare > 0);
+    const row = [...pool].sort((a, b) => a.perShare - b.perShare || a.symbol.localeCompare(b.symbol))[0];
+    if (!row) return { text: brief("No executable rail.", ["NO EXECUTABLE QUOTE"]), cards: [] };
+    const peers = cards.filter((item) => item.ticker === row.ticker);
+    return {
+      text: brief(
+        `${row.symbol} is the lowest available executable rail.`,
+        peers.map((item) => `${item.symbol} ${livePrice(item)} ${item.status}`),
+        `Analyze ${row.symbol}`,
+      ),
+      cards: peers,
+      action: { ticker: row.ticker, rail: row.rail, analyze: true },
+    };
+  }
+  if (intent.type === "reference") {
+    const ticker = intent.ticker || focus?.ticker;
+    const row = cards.find((item) => (!ticker || item.ticker === ticker) && item.reference > 0);
+    if (!row) return { text: brief("Reference is unavailable.", ["REFERENCE UNAVAILABLE"]), cards: [] };
+    return {
+      text: brief(`${row.ticker} reference is ${formatPx(row.reference)}.`, [`${row.referenceLabel}.`], `Open ${row.ticker}`),
+      cards: cards.filter((item) => item.ticker === row.ticker),
+      action: { ticker: row.ticker, analyze: true },
+    };
+  }
+  if (intent.type === "changed") {
+    const ticker = intent.ticker || focus?.ticker;
+    const row = bestExecutable(open.filter((item) => !ticker || item.ticker === ticker));
+    if (!row || !(row.reference > 0) || !(row.perShare > 0)) {
+      return { text: brief("No live comparison.", ["REFERENCE UNAVAILABLE"]), cards: [] };
     }
     return {
-      text: `${row.symbol} is flagged because gross ${formatPct(row.grossPct)} versus ${row.referenceLabel} ${formatPx(row.reference)}, minus slip ${row.complete ? formatPct(row.slipPct) : "unknown"} minus gas ${formatPct(row.costPct)} = net ${formatPct(row.netPct)}. ${row.complete ? "Slip was measured on the quote." : "Slip was not measured, so it was not subtracted."}`,
+      text: brief(
+        `${row.symbol} is ${formatPct(row.grossPct)} versus ${row.referenceLabel}.`,
+        [`Tokenized price ${formatPx(row.perShare)}.`, `Reference ${formatPx(row.reference)}.`],
+        `Analyze ${row.symbol}`,
+      ),
       cards: [row],
       action: { ticker: row.ticker, rail: row.rail, analyze: true },
     };
   }
   if (intent.type === "compare") {
     const rows = cards.filter((row) => row.ticker === intent.ticker);
-    if (!rows.length) return { text: `No live wrappers for ${intent.ticker} in this scan.`, cards: [] };
-    const lines = rows.map((row) => `${row.symbol} ${formatPx(row.perShare)} ${formatPct(row.grossPct)} net ${formatPct(row.netPct)} ${row.status}`);
+    if (!rows.length) return { text: brief(`No live wrappers for ${intent.ticker}.`, ["NO EXECUTABLE QUOTE"]), cards: [] };
+    const reference = rows.find((row) => row.reference > 0);
     return {
-      text: `${intent.ticker} wrappers versus ${rows[0].referenceLabel} ${formatPx(rows[0].reference)}.\n${lines.join("\n")}`,
+      text: brief(
+        reference ? `${intent.ticker} reference is ${formatPx(reference.reference)}.` : `${intent.ticker} reference is unavailable.`,
+        rows.map((row) => `${row.symbol} ${livePrice(row)} ${row.status}`),
+        `Analyze ${intent.ticker}`,
+      ),
       cards: rows,
       action: { ticker: intent.ticker, analyze: true },
     };

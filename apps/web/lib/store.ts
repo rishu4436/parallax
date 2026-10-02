@@ -96,6 +96,7 @@ interface ParallaxState {
   opportunities: OpportunityCard[];
   scanning: boolean;
   scanAt: number;
+  scanError?: string;
   command: string;
   confirm: ConfirmDraft | null;
   candles: Candle[];
@@ -185,6 +186,7 @@ export const useParallax = create<ParallaxState>((set, get) => ({
   opportunities: [],
   scanning: false,
   scanAt: 0,
+  scanError: undefined,
   command: "",
   confirm: null,
   candles: [],
@@ -308,11 +310,15 @@ export const useParallax = create<ParallaxState>((set, get) => ({
     set({ scanning: true });
     const res = await fetch(`/api/scan?usdt=${encodeURIComponent(get().usdt)}`, { cache: "no-store" }).catch(() => null);
     if (!res) {
-      set({ scanning: false });
+      set({ scanning: false, scanError: "Quote scan did not answer." });
       return;
     }
-    const body = (await res.json()) as { ok?: boolean; at?: number; cards?: OpportunityCard[] };
-    set({ scanning: false, opportunities: body.cards || [], scanAt: body.at || Date.now() });
+    const body = (await res.json()) as { ok?: boolean; message?: string; at?: number; cards?: OpportunityCard[] };
+    if (!res.ok || body.ok === false) {
+      set({ scanning: false, scanError: body.message || "Quote scan failed." });
+      return;
+    }
+    set({ scanning: false, scanError: undefined, opportunities: body.cards || [], scanAt: body.at || Date.now() });
   },
   refreshDesk: async () => {
     const { wallet, ticker } = get();

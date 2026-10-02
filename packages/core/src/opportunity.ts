@@ -57,6 +57,14 @@ export interface OpportunityCard {
   vendor?: string;
   mode?: string;
   errorText?: string;
+  /** Live quote expiry. Absent when this card has no quote. */
+  quoteExpiresAt?: number;
+  networkFeeUsd?: number | null;
+  gasEstimateUsd?: number | null;
+  estimatedGasUnits?: string | null;
+  priceImpactPct?: number | null;
+  tradeFeeUsd?: number | null;
+  multiplier?: number;
 }
 
 export function rankOpportunities(rows: OpportunityCard[]): OpportunityCard[] {

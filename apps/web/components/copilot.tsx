@@ -69,7 +69,7 @@ export function Copilot() {
       <h2 className="kicker">Trade copilot</h2>
       <div className="mt-3 max-h-56 space-y-2 overflow-auto text-sm">
         {messages.map((row, index) => (
-          <p key={index} className={row.role === "user" ? "text-gold" : "text-dim"}>
+          <p key={index} className={`whitespace-pre-wrap ${row.role === "user" ? "text-gold" : "text-dim"}`}>
             {row.text}
           </p>
         ))}
@@ -89,7 +89,7 @@ export function Copilot() {
         />
       </form>
       <div className="mt-2 flex flex-wrap gap-2">
-        {["Opportunities above 1%", "Compare NVDA", "Why is this flagged?"].map((hint) => (
+        {["What changed on NVDA?", "Cheapest executable rail", "Compare NVDA", "What is the reference price?"].map((hint) => (
           <button key={hint} className="text-[11px] tracking-[0.08em] text-dim hover:text-gold" onClick={() => void ask(hint)}>
             {hint}
           </button>

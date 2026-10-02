@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 const STATIC = [
   { label: "Overview", run: "/" },
+  { label: "Markets", run: "/markets" },
   { label: "Trade", run: "trade" },
   { label: "Jobs", run: "jobs" },
   { label: "Wallet", run: "wallet" },
@@ -81,8 +82,8 @@ export function CommandPalette() {
   }
 
   async function choose(raw: string) {
-    if (raw === "/") {
-      router.push("/");
+    if (raw.startsWith("/")) {
+      router.push(raw);
       setCommand("");
       setOpen(false);
       return;
