@@ -19,6 +19,7 @@ export * from "./plan";
 export * from "./opportunity";
 export * from "./opportunityView";
 export * from "./agentDesk";
+export * from "./portfolioView";
 export * from "./markets";
 export * from "./copilot";
 export * from "./flag";
