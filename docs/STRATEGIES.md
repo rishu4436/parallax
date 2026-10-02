@@ -1,6 +1,10 @@
 # PARALLAX strategies
 
-Not advice. Tokens are not shares. No voting. Dividends rebase into the token. Every job queues an unsigned intent. The desk worker never signs. The user signs in Binance Web3 Wallet.
+Not advice. Tokens are not shares. No voting. Dividends rebase into the token.
+
+Catalog advice (`adviseDesk`) does not sign. An armed catalog job or an agent strategy can execute when policy passes and the Agentic Wallet session is connected. Otherwise the intent waits for a person to sign in Binance Web3 Wallet. The worker does not hold that wallet's key.
+
+`/strategies` is the control surface. It reads `STRATEGY_CATALOG` and arms jobs through the same `StrategyArm` path as the desk. Session router (`session_hours`) does not arm a job.
 
 These jobs exist because the same US name is three BEP-20s on BSC, cash hours and on-chain hours are different clocks, and a quote dies in 30 seconds.
 
@@ -22,7 +26,7 @@ Sources: [Ondo Stocks overview](https://docs.ondo.finance/ondo-stocks/overview),
 
 1. **Hours split.** Cash is Regular 09:30–16:00 America/New_York. Ondo and bStock RFQ often go blank outside that window. xStock AMM may still print. That print is a thin book versus Friday close, not a cash print.
 2. **Cross-rail cheapness.** When two rails are OPEN, per-share (after multiplier, after the scored quote) can differ. The desk can accumulate the cheaper claim. It cannot complete a risk-free arb: the wrappers never net.
-3. **Cash prints.** The desk reads Yahoo daily bars once and keeps four numbers: **prior close** and **prior open** (last completed regular session — yesterday on a weekday, Friday on a weekend), **session open** (today’s regular open once the bar exists), and **Friday close** (weekend gap). `gap = (perShare − ref) / ref`. Off-hours those cash numbers are frozen while the wrapper can still move. Friday-only was the original weekend thesis; on a Wednesday it is four sessions stale.
+3. **Cash prints.** Primary prints come from the signed RWA underlying-market payload. Yahoo and Stooq daily bars are fallbacks, including Friday when that payload is not a Friday session. The desk keeps four numbers: **prior close** and **prior open** (last completed regular session — yesterday on a weekday, Friday on a weekend), **session open** (today’s regular open once the bar exists), and **Friday close** (weekend gap). `gap = (perShare − ref) / ref`. Off-hours those cash numbers are frozen while the wrapper can still move. Friday-only was the original weekend thesis; on a Wednesday it is four sessions stale.
 4. **Event windows.** Earnings, dividends, and 40365-family halts. Ondo may pause around ex-date. Flatten is a size job, not a view on the print.
 
 Practitioner notes, not a guarantee:
@@ -30,6 +34,14 @@ Practitioner notes, not a guarantee:
 - Tokenized weekend volume is a small slice of weekday volume; spreads widen. ([Coincub / Cong et al. summary](https://coincub.com/blog/24-7-tokenized-asset-trading/), [DefiLlama bStocks after hours](https://defillama.com/research/spotlight/bstocks-after-hours-who-is-capturing-liquidity-when-markets-close))
 - Some weekend token moves have led Monday’s cash open (Binance Research on bStocks reported high directional hit rates in a short 2026 sample). Short-horizon off-hour prints on a single thin venue also reverse. The desk therefore has **two** gap jobs: follow a rich gap, buy a cheap gap. They are opposites. Do not arm both on the same name without reading the tape.
 - Kraken’s xStocks FAQ states off-hours mismatch has historically been under 1% by Monday open, with wider spreads while cash is shut.
+
+## Two kinds of strategy
+
+Catalog jobs (`dca`, `index_core`, `cheap_rail`, `weekend_cap`, `gap_fade`, `open_print`, `flatten_earnings`) are created by `jobFromStrategy` and stored in `jobs.json`. `session_hours` is advice only.
+
+Agent strategies (`BASIS_TRADE`, `CROSS_ARB`, `CORRELATION`) are armed through `/api/arm-job` into `armed.json`. The worker quotes them, can simulate a SWAP, then sends an Agentic Wallet market order when policy allows. They do not share the catalog cron.
+
+Both paths still pass PolicyEngine and, on the current worker, an Execution Passport. The kill switch blocks the send.
 
 ## Jobs the worker will queue
 

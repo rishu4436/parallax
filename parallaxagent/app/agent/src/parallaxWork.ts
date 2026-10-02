@@ -3,7 +3,7 @@
  * deliverable. Studio's signing.ts remains the only signer.
  */
 
-const base = () => (process.env.PARALLAX_BASE || "http://127.0.0.1:3020").replace(/\/$/, "");
+const base = () => (process.env.PARALLAX_BASE || "http://127.0.0.1:3000").replace(/\/$/, "");
 
 export interface ParallaxAsk {
   ticker: string;

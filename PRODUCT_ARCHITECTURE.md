@@ -6,7 +6,11 @@ Audit of `D:\parallax` as of commit `f30f903` on `main`. This document describes
 
 ## Product vision
 
-PARALLAX is a one-page BSC mainnet desk for tokenized US stocks. The same cash name exists as three non-fungible BEP-20 wrappers:
+PARALLAX is an execution desk for tokenized equities on BSC mainnet. Overview, Markets, Opportunities, Desk, Portfolio, Activity, Strategies, Agents, Developer, and Replay are separate routes on one shell. The spine is market, opportunity, PolicyEngine, Execution Passport, signing commitment, authorized signature, receipt.
+
+The sections below were written as the desk was built. Where they disagree with the README or `docs/ARCHITECTURE.md`, those two files are current.
+
+PARALLAX is a BSC mainnet desk for tokenized US stocks. The same cash name exists as three non-fungible BEP-20 wrappers:
 
 | Rail | Suffix | Example | Typical Binance Web3 route |
 | --- | --- | --- | --- |
@@ -227,7 +231,7 @@ Scaffolded with `@bnbagent/studio-cli`, runtime AgentCore on **bsc-mainnet**.
 - Commerce: ERC-8183, seller price `"0"` (free). ERC-8004 `agent_id` 357564. Wallet `0x8a4420…0209`.
 - Deploy: AWS Bedrock AgentCore `arn:aws:bedrock-agentcore:us-east-1:654784950739:runtime/parallaxagent-Uu1isS4H7B`.
 - LLM: Pieverse `auto/free`. LLM never signs and never sets price.
-- Work hook `parallaxWork.ts`: HTTP to desk `PARALLAX_BASE` (default `http://127.0.0.1:3020`) `POST /api/quote` or `GET /api/desk`. Deliverable is the live rail table plus “No transaction was signed.”
+- Work hook `parallaxWork.ts`: HTTP to desk `PARALLAX_BASE` (default `http://127.0.0.1:3000`) `POST /api/quote` or `GET /api/desk`. Deliverable is the live rail table plus “No transaction was signed.”
 - `signing.ts` only: `signQuote`, `verifySignedJob`, `submitResult`, `settle`. Keystore outside `app/agent` so deploys cannot bundle it.
 
 Desk pings Studio at `http://127.0.0.1:9000/ping` and reads `studio.toml` address for the `/api/desk` `studio` field.
@@ -353,14 +357,12 @@ These are leftover or overlapping. Replace or delete in a later change; do not w
 
 | Piece | Issue |
 | --- | --- |
-| `build-panel.tsx` | First buy / baskets / plain-rule builder. Not mounted on `/desk`. |
-| `left-rail.tsx` | Icon nav from an earlier chrome. Desk uses TopBar + mobile tabs. |
-| `weekend-dock.tsx` | Weekend brief UI. SessionStrip + Jobs + copilot cover the same story. Unused. |
+| `build-panel.tsx`, `left-rail.tsx`, `weekend-dock.tsx`, `top-bar.tsx` | Removed. They were not mounted. The shell is `Sidebar`, `CommandBar`, and `MobileNav`. |
 | Dual opportunity UIs | `OpportunityEngine` (universe scan) and `OpportunityBoard` (selected ticker) overlap in language. Keep both roles; do not add a third “gap” card. |
 | `COPY.strategies` and `docs/STRATEGIES.md` “worker never signs” | False once `baw` is CONNECTED. Catalog jobs and armed loops send. Copy must match `apps/agent`. |
 | `DeskAdapters` in `adapters.ts` | Interface only. Live code calls `@parallax/web3` directly. Either implement adapters or stop implying a seam. |
 | README MCP list | Missing `parallax_advise`. Studio vs stdio MCP are conflated in prose. |
-| `PARALLAX_BASE` default `:3020` | Desk listens on `PORT` or 3000. Studio deliverables miss the desk unless env is set. |
+| `PARALLAX_BASE` | Defaults to `http://127.0.0.1:3000`, the desk port. Override when the desk is elsewhere. |
 | Nested `parallaxagent/app/agent/pnpm-lock.yaml` | Local install residue. Workspace lock is `parallaxagent/pnpm-lock.yaml`. |
 
 ---

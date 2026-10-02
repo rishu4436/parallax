@@ -1,16 +1,69 @@
 # PARALLAX
 
-Cash freezes. BNB doesn’t. Trade the gap.
+Execution intelligence for tokenized equities on BNB Smart Chain.
 
-PARALLAX is a one-page trading surface for tokenized US stocks on BNB Smart Chain mainnet. The same company can exist as three different BEP-20s:
+Discover markets, assess an executable quote, enforce policy, prepare a passport, and keep an audit trail from the signed payload to the receipt. The same cash name can exist as three different BEP-20 wrappers. They are not fungible. A gap against a cash reference is not a guaranteed arbitrage, and this desk does not compute PnL.
 
-| Rail | Suffix | Example | Route |
+Not advice. Tokens are not shares. No voting. Dividends rebase into the token.
+
+## Product
+
+| Surface | Route | What it does |
+| --- | --- | --- |
+| Overview | `/` | Product home. Cash session, scan state, current quote, and recent tape. |
+| Markets | `/markets`, `/markets/[ticker]` | Directory and one underlying. Live rails, reference, and fees when Binance sent them. |
+| Opportunities | `/opportunities` | Cross-rail screen. Gross gap, net edge, and policy preview. |
+| Desk | `/desk` | Trade preparation. Confirm, simulate, and sign. |
+| Portfolio | `/portfolio` | Wallet balances. A missing price stays blank. No cost basis. |
+| Activity | `/activity` | Stored tape, passports, commitments, and receipts. |
+| Strategies | `/strategies` | Catalog advice and armed jobs. |
+| Agents | `/agents` | Agentic Wallet, worker, Agent Studio ping, and MCP tools. |
+| Developer | `/developer` | Observed Binance calls from the devex log. |
+| Replay | `/replay` | Deterministic scenarios. No live order. Not in the primary nav. |
+
+Jobs and Wallet stay at `/jobs` and `/wallet`. They are desk utilities.
+
+## Lifecycle
+
+```text
+Markets → Opportunities → Policy → Execution Passport → Authorized signing → Execution → Activity / Receipt
+```
+
+Human SWAP:
+
+```text
+Quote → Prepare → Simulate → Confirm → Wallet sign → Broadcast → Chain receipt
+```
+
+Human RFQ:
+
+```text
+Quote → Requote for the signer → Prepare → EIP-712 signature → RFQ submit → Poll → Fill or failure
+```
+
+Agent:
+
+```text
+Strategy → Decision → Quote → Passport → Policy → Agentic Wallet → Execution → Receipt
+```
+
+The model does not sign. MCP does not sign. The Developer Console does not sign. Guided Replay does not sign. PolicyEngine is deterministic. The Passport is the execution context. The signing commitment is a hash of the payload that was prepared. Broadcast and RFQ submit reject a payload that does not match that hash.
+
+## Rails
+
+| Rail | Suffix | Example | What the route decides |
 | --- | --- | --- | --- |
-| bStocks | `B` | NVDAB | LiquidMesh SWAP and PcsXRfq |
-| Ondo | `on` | NVDAon | RFQ (InchFusion, CowSwap, PcsXRfq) |
-| xStocks | `x` | NVDAx | AMM SWAP |
+| bStocks | `B` | NVDAB | `executionMode` on the returned route. Can be SWAP or RFQ. |
+| Ondo | `on` | NVDAon | Same. Not permanently RFQ-only. A regular-session book has returned SWAP. |
+| xStocks | `x` | NVDAx | AMM SWAP in the books observed here. |
 
-They are not fungible. Binance Web3 Trading API is the only quote and execution layer. Quotes die in 30 seconds. PARALLAX never holds a key. You sign in Binance Web3 Wallet. Fills land in that wallet. Spot only.
+Rails can be OPEN, CLOSED, or HALTED on their own. A closed rail is not given a synthesized price. Quotes expire in 30 seconds (`40401` on a late swap or RFQ submit). Chain id is 56 only.
+
+## Live and replay
+
+Live reads and, when you explicitly confirm, live signatures go through Binance Web3 and the connected wallet or the Agentic Wallet session.
+
+Replay (`/replay`) walks `DEMO_SCENARIOS` through `evaluateLimits`. It does not write the tape, passports, receipts, jobs, or wallet. It stops before a signature. It is not a PnL simulator.
 
 ## Install
 
@@ -19,75 +72,80 @@ pnpm install
 cp .env.example .env
 ```
 
-Get a free Web3 API key and secret from the [Binance Web3 developer portal](https://web3.binance.com/en/dev-docs/authentication). A Binance account or Binance Web3 Wallet is enough for hackathon access. Put them in `.env`:
-
-```
-WEB3_API_KEY=
-WEB3_API_SECRET=
-WEB3_API_BASE=https://web3.binance.com/build
-```
-
-Every Trading and Transaction call is HMAC-signed. The key stays on the server (`apps/web/app/api`). Fund the wallet with USDT and a little BNB for gas on BSC mainnet (chain id 56).
+Set `WEB3_API_KEY` and `WEB3_API_SECRET` from the [Binance Web3 developer portal](https://web3.binance.com/en/dev-docs/authentication). Both stay on the server. `WEB3_API_BASE` is `https://web3.binance.com/build`. Fund the wallet with USDT and a little BNB for gas.
 
 ```bash
-pnpm quote          # live NVDA rails, or the live error body
-pnpm test           # session clock and router gates
 pnpm dev            # http://localhost:3000
-pnpm --filter @parallax/agent start
-pnpm --filter @parallax/mcp start
+pnpm test
+pnpm quote          # live NVDA book, or the live error body
+pnpm agent          # desk worker
+pnpm mcp            # stdio MCP, never signs
 ```
 
-## What you are signing
-
-BUY quotes every wrapper, marks the best open rail, and opens a full-screen confirm. SWAP orders are simulated with the Transaction Simulate API before the wallet signs. RFQ orders sign EIP-712 typed data, submit to `/order/submit`, and poll until filled or failed. A locked rail is never silently replaced by a different wrapper.
-
-Caps default to 25 USDT per order and 100 USDT per New York day. The kill switch pauses the agent and rejects new builds.
-
-Jobs the desk worker will queue, and the live advice the Strategies dock and Studio agent read, are in [docs/STRATEGIES.md](docs/STRATEGIES.md). Session DCA, index core, cheap rail, weekend discovery, Friday discount, cash-open window, and flatten earnings all stop at an unsigned intent.
+Default caps are 25 USDT per order and 100 USDT per New York day. The kill switch blocks execution.
 
 ## Always-on desk
 
-Vercel can serve the page. It cannot keep the worker or the Agentic Wallet login. Run both on one machine that stays on. Jobs and the tape go in `PARALLAX_DATA_DIR`. The `baw` session stays in that machine's home directory.
+Vercel can serve the site. It cannot keep the worker or the Agentic Wallet login. Run those on a machine that stays on. Job files use `PARALLAX_DATA_DIR`. On Vercel the store is process memory (`durable: false`).
 
 ```bash
-cp .env.example .env
-# fill WEB3_API_KEY and WEB3_API_SECRET
 docker compose up -d --build
 docker compose exec parallax baw auth signin
-docker compose exec parallax baw auth status
 ```
 
-The site is on port 3000. Sign in to Agentic Wallet once in that container. After that, the login and the job files survive a restart. A job inside the agent caps is sent from that session. If the session is signed out, the same job waits under To sign.
+The site is on port 3000. A connected `baw` session can send a job that passes policy. A signed-out session leaves the job to be signed by a person.
 
-Without Docker, from this repo, after `pnpm install` and `pnpm build`:
+`pnpm desk` starts the site and `pnpm agent` together.
 
-```bash
-pnpm desk
-```
+## Agentic Wallet
 
-That starts the site and `pnpm agent` together. Stop it with Ctrl+C.
+`apps/agent` ticks catalog jobs and armed strategies. Catalog jobs quote, issue a passport with `AGENTIC_MARKET`, and send with `baw` when the session is connected. Armed strategies can simulate a SWAP and then send the market order. The wallet signs. The worker does not invent a fill.
+
+`GET /api/agentic` reports CONNECTED or not. The Agents page shows that status.
 
 ## Agent Studio
 
-The hackathon agent is the Studio project in `parallaxagent/`, scaffolded with `@bnbagent/studio-cli@0.0.14` on **bsc-mainnet**. Faces are A2A, MCP, and X402. Commerce is ERC-8183 plus B402. The seller price is free. Delivery calls the PARALLAX desk (`PARALLAX_BASE`, default `http://127.0.0.1:3020`) and returns the live rail table. Signing stays in `app/agent/src/signing.ts`. The model does not sign.
+`parallaxagent/` is the Studio project (`bsc-mainnet`). Faces: A2A, MCP, X402. Commerce is ERC-8183 and B402. Seller signing stays in `parallaxagent/app/agent/src/signing.ts`. The model does not sign market orders.
+
+Delivery calls the desk at `PARALLAX_BASE`. The default is `http://127.0.0.1:3000`, the same port as `pnpm dev` and Docker. Set the variable if the desk is elsewhere.
 
 ```bash
 cd parallaxagent
 pnpm install
-# from app/agent, after the desk is running:
-bag wallet new --generate-password
-bag doctor
-bag dev
+bag dev    # A2A on port 9000, MCP at /mcp
 ```
 
-`bag dev` serves A2A on port 9000 and MCP at `/mcp`. ERC-8004 registration happens at deploy time with `bag deploy` and `bag deploy verify`, after you fund the Studio wallet and switch storage off local disk.
+The desk reports Studio ONLINE only after its ping succeeds. A `studio.toml` file is not treated as a live runtime. ERC-8004 registration is a deploy step (`AGENT_ERC8004_ID`), not something the desk invents.
 
-`apps/agent` is the older local ticker. It still queues intents for the desk and does not replace Studio.
+## MCP
 
-`apps/mcp` exposes `parallax_resolve`, `parallax_quote`, `parallax_best`, `parallax_simulate`, `parallax_status`, `parallax_portfolio`, and `parallax_weekend_brief`. None of them sign.
+`apps/mcp` is stdio. It does not sign.
 
-## Eligibility
+- `parallax_resolve`
+- `parallax_quote`
+- `parallax_best`
+- `parallax_simulate`
+- `parallax_passport`
+- `parallax_policy`
+- `parallax_advise`
+- `parallax_status`
+- `parallax_portfolio`
+- `parallax_weekend_brief`
 
-US, UK, and other regions listed by the hackathon rules cannot enter. This software is not an offer to those regions.
+Studio MCP is a separate face inside `parallaxagent`. Do not treat the two as one server.
 
-Not investment advice. These tokens are not shares. They do not vote. Dividends rebase into the token.
+## Docs
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/STRATEGIES.md](docs/STRATEGIES.md)
+- [docs/DEVEX.md](docs/DEVEX.md)
+- [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md)
+- [docs/SUBMISSION_CHECKLIST.md](docs/SUBMISSION_CHECKLIST.md)
+- [PRODUCT_ARCHITECTURE.md](PRODUCT_ARCHITECTURE.md)
+- [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md)
+
+## Known limits
+
+The worker and `baw` are not durable on Vercel. Studio delivery needs a reachable `PARALLAX_BASE`. Local JSON is the desk store on a long-running machine. Quote TTL is 30 seconds. RFQ does not get an EVM simulation. Portfolio does not invent cost basis. Scan cards can omit liquidity, slippage, gas USD, or price impact. Those fields stay blank.
+
+US, UK, and other regions excluded by the program rules are not offered this software.

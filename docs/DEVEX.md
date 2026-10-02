@@ -1,5 +1,9 @@
 # PARALLAX developer experience
 
+The Developer Console (`/developer`) reads the devex log written by `web3Fetch`. Median latency needs one sample. Rates need five finished calls. p95 needs twenty. A missing gas USD or price impact stays null. `tradeFee` is not copied into `gasEstimateUsd`.
+
+Observed business codes and the 24 Sep 2026 book below are unchanged. Yahoo and Stooq are fallbacks. `executionMode` on the route is the source of truth. Ondo and bStocks are not permanently RFQ-only.
+
 Written from live BSC mainnet calls. The clock on the successful book below is Thursday 24 Sep 2026, 13:21 America/New_York, regular session, US cash open. Chain id is 56. Base URL is `https://web3.binance.com/build`.
 
 ## Time to first successful quote
