@@ -52,7 +52,23 @@ export interface VenueQuote {
   slipBps50: number;
   slipBps500: number;
   slipKnown: boolean;
+  /**
+   * Scoring cost in USD. Equals networkFeeUsd when Binance sent tradeFee,
+   * else 0. Never a stand-in for gasEstimateUsd.
+   */
   gasUsd: number;
+  /** Binance `tradeFee` in USD (network/tx cost). Null when omitted. */
+  networkFeeUsd?: number | null;
+  /** Independent gas USD. Null unless Binance sent a gas USD that is not tradeFee. */
+  gasEstimateUsd?: number | null;
+  /** Wei. Null when omitted. */
+  gasPrice?: string | null;
+  /** Gas units (Binance `estimateGasFee` when it is a unit count). Null when omitted. */
+  estimatedGasUnits?: string | null;
+  /** Binance `priceImpactPercent`. Null when omitted. Not slip bps. */
+  priceImpactPct?: number | null;
+  /** Binance `feeAmount` when it is a USD figure. Null when omitted. */
+  tradeFeeUsd?: number | null;
   approveTarget?: string;
   /** Wallet passed to `/quote`. RFQ submit must be signed by this same address. */
   userWalletAddress?: string;
@@ -181,6 +197,8 @@ export interface TapeRow {
   vendorName?: string;
   source?: "user" | "agent";
   passportHash?: string;
+  signingCommitmentHash?: string;
+  receiptId?: string;
 }
 
 export interface FridayPrint {
@@ -249,6 +267,8 @@ export interface AgentFill {
   txHash?: string;
   note: string;
   passportHash?: string;
+  signingCommitmentHash?: string;
+  receiptId?: string;
 }
 
 export const QUOTE_TTL_MS = 30_000;

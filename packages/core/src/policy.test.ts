@@ -352,6 +352,27 @@ test("baw market-order skips EVM simulation", () => {
   assert.equal(decision.checks.find((row) => row.id === "simulation")?.pass, true);
 });
 
+test("executionRequirement AGENTIC_MARKET skips EVM simulation", () => {
+  const decision = propose({
+    source: "strategy",
+    executionRequirement: "AGENTIC_MARKET",
+    simulateStatus: "NONE",
+    prepareStep: undefined,
+  });
+  assert.equal(decision.verdict, "PASS");
+  assert.equal(decision.checks.find((row) => row.id === "simulation")?.pass, true);
+});
+
+test("executionRequirement EVM_SIMULATION still requires SUCCESS", () => {
+  const decision = propose({
+    executionRequirement: "EVM_SIMULATION",
+    simulateStatus: "NONE",
+    prepareStep: "sign-swap",
+  });
+  assert.equal(decision.verdict, "WAIT");
+  assert.equal(decision.primary?.code, "SIM_REQUIRED");
+});
+
 test("closed rail does not also fail simulation", () => {
   const decision = propose({
     quote: quote({ ok: false, errorCode: 40367, errorText: "40367 US hours", perShare: 0, outAmount: "0" }),

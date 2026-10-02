@@ -65,9 +65,24 @@ interface RawRoute {
   fromTokenAmount?: string;
   toTokenAmount?: string;
   tradeFee?: string | null;
+  estimateGasFee?: string | null;
+  feeAmount?: string | null;
+  gasPrice?: string | null;
   executionMode?: "SWAP" | "RFQ";
   approveTarget?: string | null;
   priceImpactPercent?: string | null;
+}
+
+function finiteOrNull(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function stringOrNull(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  const text = String(value);
+  return text.length ? text : null;
 }
 
 function asRoutes(data: unknown): RawRoute[] {
@@ -92,7 +107,7 @@ function mapRoute(
   const outHuman = fromBaseUnits(outAmount, outDec);
   const mid = side === "buy" ? (outHuman > 0 ? inHuman / outHuman : 0) : inHuman > 0 ? outHuman / inHuman : 0;
   const perShare = wrapper.multiplier > 0 ? mid / wrapper.multiplier : mid;
-  const gasUsd = Number(route.tradeFee ?? 0);
+  const networkFeeUsd = finiteOrNull(route.tradeFee);
   return {
     wrapper,
     ok: Boolean(route.toTokenAmount && route.toTokenAmount !== "0"),
@@ -107,7 +122,13 @@ function mapRoute(
     slipBps50: 0,
     slipBps500: 0,
     slipKnown: false,
-    gasUsd: Number.isFinite(gasUsd) ? gasUsd : 0,
+    gasUsd: networkFeeUsd && networkFeeUsd > 0 ? networkFeeUsd : 0,
+    networkFeeUsd,
+    gasEstimateUsd: null,
+    gasPrice: stringOrNull(route.gasPrice),
+    estimatedGasUnits: stringOrNull(route.estimateGasFee),
+    priceImpactPct: finiteOrNull(route.priceImpactPercent),
+    tradeFeeUsd: finiteOrNull(route.feeAmount),
     approveTarget: route.approveTarget || undefined,
     userWalletAddress: wallet,
     raw: route,
@@ -131,6 +152,12 @@ function failed(wrapper: Wrapper, err: unknown): VenueQuote {
     slipBps500: 0,
     slipKnown: false,
     gasUsd: 0,
+    networkFeeUsd: null,
+    gasEstimateUsd: null,
+    gasPrice: null,
+    estimatedGasUnits: null,
+    priceImpactPct: null,
+    tradeFeeUsd: null,
     raw: isWeb3Error(err) ? err.body : { message: text },
   };
 }

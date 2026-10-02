@@ -1,13 +1,16 @@
 import { readEnv } from "@parallax/config";
 import {
   cashSession,
+  commitAgenticSwap,
   Correlation,
   createStrategy,
   gapPct,
   getUnderlying,
   issuePassport,
+  issueReceipt,
   passportFromBook,
   policyAllowsSend,
+  receiptStatusFromSend,
   referenceFromBook,
   shortPassportHash,
   wrapperList,
@@ -19,7 +22,7 @@ import {
   type Settings,
   type Side,
 } from "@parallax/core";
-import { pushFill, readArmed, readWorkerEnabled, spentTodayUsdt, upsertTape, writeArmed, writePassport } from "@parallax/core/persist";
+import { pushFill, readArmed, readWorkerEnabled, rememberExecution, spentTodayUsdt, upsertTape, writeArmed, writePassport } from "@parallax/core/persist";
 import {
   fetchBnbMarket,
   fetchMarketPrint,
@@ -61,6 +64,8 @@ function noteFill(row: ArmedStrategy, input: {
   txHash?: string;
   sent: boolean;
   passportHash?: string;
+  signingCommitmentHash?: string;
+  receiptId?: string;
 }): void {
   stamp(row, input.note, input.sent);
   fill({
@@ -77,6 +82,8 @@ function noteFill(row: ArmedStrategy, input: {
     txHash: input.txHash,
     note: input.note,
     passportHash: input.passportHash,
+    signingCommitmentHash: input.signingCommitmentHash,
+    receiptId: input.receiptId,
   });
 }
 
@@ -275,13 +282,25 @@ async function broadcast(row: ArmedStrategy, strategy: DeskStrategy, ticker: str
   }
 
   const payload = strategy.generateSwapPayload();
+  const tokenQty = strategy.side === "sell" ? tokenQtyFromNotional(row.usdt, quote.perShare) || undefined : undefined;
+  const commitment = commitAgenticSwap({
+    passportHash: passport.hash,
+    side: strategy.side,
+    token: quote.wrapper.address,
+    usdt: row.usdt,
+    tokenQty,
+  });
   const sent = await sendAgentSwap({
     side: strategy.side,
     usdt: row.usdt,
     token: quote.wrapper.address,
-    tokenQty: strategy.side === "sell" ? tokenQtyFromNotional(row.usdt, quote.perShare) || undefined : undefined,
+    tokenQty,
   });
   const after = await fetchMarketPrint(quote.wrapper.address);
+  const realizedSlippageBps =
+    after.perShare && quote.perShare
+      ? Math.round(((after.perShare - quote.perShare) / quote.perShare) * 10_000)
+      : null;
   if (after.perShare) {
     recordSlippage({
       path: `${quote.wrapper.symbol} ${quote.vendorName || quote.wrapper.rail}`,
@@ -290,6 +309,20 @@ async function broadcast(row: ArmedStrategy, strategy: DeskStrategy, ticker: str
       note: sent.txHash || sent.orderId,
     });
   }
+  const receipt = issueReceipt({
+    id: sent.orderId || randomUUID(),
+    passportHash: passport.hash,
+    signingCommitmentHash: commitment.hash,
+    txHash: sent.txHash,
+    orderId: sent.orderId,
+    status: receiptStatusFromSend(sent),
+    source: "agentic",
+    note: sent.note,
+    actualOutput: after.perShare != null ? String(after.perShare) : null,
+    realizedSlippageBps,
+    filledAt: sent.done ? Date.now() : undefined,
+  });
+  rememberExecution({ passport, commitment, receipt });
   const simulated = payload.data !== "0x" ? ` · simulated ${payload.to}` : "";
   const failed = sent.note.includes("failed");
   const submitted = Boolean(sent.orderId || sent.txHash);
@@ -297,18 +330,20 @@ async function broadcast(row: ArmedStrategy, strategy: DeskStrategy, ticker: str
     ticker,
     side: strategy.side,
     status: failed ? "failed" : submitted ? "filled" : "skipped",
-    note: `${sent.note}${simulated} · spread ${strategy.spreadPct.toFixed(2)}% · gas ${quote.gasUsd.toFixed(4)} · x402 ${x402Detail} · passport ${shortPassportHash(passport.hash)}`,
+    note: `${sent.note}${simulated} · spread ${strategy.spreadPct.toFixed(2)}% · gas ${quote.gasUsd.toFixed(4)} · x402 ${x402Detail} · passport ${shortPassportHash(passport.hash)} · receipt ${shortPassportHash(receipt.hash)}`,
     spreadPct: strategy.spreadPct,
-    gasUsd: quote.gasUsd,
+    gasUsd: quote.networkFeeUsd ?? quote.gasUsd,
     x402,
     x402Detail,
     txHash: sent.txHash,
     sent: submitted || sent.pending,
     passportHash: passport.hash,
+    signingCommitmentHash: commitment.hash,
+    receiptId: receipt.id,
   });
   if (submitted || failed) {
     upsertTape({
-      id: sent.orderId || randomUUID(),
+      id: sent.orderId || receipt.id,
       at: Date.now(),
       side: strategy.side,
       ticker,
@@ -321,6 +356,8 @@ async function broadcast(row: ArmedStrategy, strategy: DeskStrategy, ticker: str
       vendorName: quote.vendorName,
       source: "agent",
       passportHash: passport.hash,
+      signingCommitmentHash: commitment.hash,
+      receiptId: receipt.id,
     });
   }
 }

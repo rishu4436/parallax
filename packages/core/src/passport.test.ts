@@ -116,12 +116,13 @@ test("quoted: live executable quote with measured slip and no prepare", () => {
   assert.equal(passport.body.expiresAt, 1_000 + QUOTE_TTL_MS);
   assert.equal(passport.body.reference.price, 100);
   assert.equal(passport.body.multiplier, 1);
-  assert.equal(passport.body.priceImpact.source, "slipBps50");
-  assert.equal(passport.body.priceImpact.percent, 0.1);
-  assert.equal(passport.body.networkFee.source, "tradeFee");
-  assert.equal(passport.body.gasEstimate.source, "tradeFee");
-  assert.equal(passport.body.networkFee.usd, passport.body.gasEstimate.usd);
-  assert.equal(passport.body.networkFee.usd, 0.02);
+  assert.equal(passport.body.priceImpactPct, null);
+  assert.equal(passport.body.networkFeeUsd, null);
+  assert.equal(passport.body.gasEstimateUsd, null);
+  assert.equal(passport.body.gasPrice, null);
+  assert.equal(passport.body.estimatedGasUnits, null);
+  assert.equal(passport.body.tradeFeeUsd, null);
+  assert.equal(passport.body.executionRequirement, "EVM_SIMULATION");
   assert.equal(passport.body.simulation.status, "NONE");
   assert.match(passport.hash, /^[0-9a-f]{64}$/);
 });
@@ -130,8 +131,7 @@ test("incomplete: slip was not measured", () => {
   const passport = issue({ quote: quote({ slipKnown: false, slipBps50: 0 }) });
   assert.equal(passport.state, "incomplete");
   assert.equal(passport.body.quote.slipKnown, false);
-  assert.equal(passport.body.priceImpact.source, "unknown");
-  assert.equal(passport.body.priceImpact.percent, null);
+  assert.equal(passport.body.priceImpactPct, null);
 });
 
 test("incomplete: missing reference is not invented as 0", () => {
@@ -316,20 +316,56 @@ test("attaching simulation changes the hash", () => {
   assert.equal(ready.state, "ready");
 });
 
-test("priceImpactPercent on the raw route wins over slip bps", () => {
+test("priceImpactPercent on the raw route is price impact, not slip bps", () => {
   const passport = issue({
-    quote: quote({ raw: { priceImpactPercent: "0.42" } }),
+    quote: quote({ slipBps50: 10, raw: { priceImpactPercent: "0.42" } }),
   });
-  assert.equal(passport.body.priceImpact.source, "priceImpactPercent");
-  assert.equal(passport.body.priceImpact.percent, 0.42);
+  assert.equal(passport.body.priceImpactPct, 0.42);
+  assert.equal(passport.body.quote.slipBps50, 10);
 });
 
-test("missing tradeFee is unknown, not a second invented fee", () => {
+test("missing tradeFee is null, not a second invented fee", () => {
   const passport = issue({ quote: quote({ gasUsd: 0 }) });
-  assert.equal(passport.body.networkFee.usd, null);
-  assert.equal(passport.body.gasEstimate.usd, null);
-  assert.equal(passport.body.networkFee.source, "tradeFee");
-  assert.equal(passport.body.gasEstimate.source, "tradeFee");
+  assert.equal(passport.body.networkFeeUsd, null);
+  assert.equal(passport.body.gasEstimateUsd, null);
+  assert.equal(passport.body.tradeFeeUsd, null);
+});
+
+test("tradeFee is never copied onto gasEstimateUsd", () => {
+  const passport = issue({
+    quote: quote({
+      networkFeeUsd: 0.019,
+      gasUsd: 0.019,
+      gasEstimateUsd: null,
+      estimatedGasUnits: "450000",
+      gasPrice: "1000000000",
+      tradeFeeUsd: null,
+      priceImpactPct: 0.12,
+      raw: { tradeFee: "0.019", estimateGasFee: "450000", feeAmount: null },
+    }),
+  });
+  assert.equal(passport.body.networkFeeUsd, 0.019);
+  assert.equal(passport.body.gasEstimateUsd, null);
+  assert.equal(passport.body.estimatedGasUnits, "450000");
+  assert.equal(passport.body.gasPrice, "1000000000");
+  assert.equal(passport.body.priceImpactPct, 0.12);
+  assert.equal(passport.body.tradeFeeUsd, null);
+});
+
+test("AGENTIC_MARKET is ready without a prepare snapshot", () => {
+  const passport = issue({
+    intent: { ...intent, actor: "agent" },
+    executionRequirement: "AGENTIC_MARKET",
+  });
+  assert.equal(passport.body.executionRequirement, "AGENTIC_MARKET");
+  assert.equal(passport.state, "ready");
+  assert.equal(passport.body.simulation.status, "NONE");
+});
+
+test("RFQ without prepare stays quoted", () => {
+  const passport = issue({ quote: quote({ executionMode: "RFQ", vendorName: "Ondo" }) });
+  assert.equal(passport.body.executionRequirement, "RFQ");
+  assert.equal(passport.state, "quoted");
 });
 
 test("prepareSnapshot drops tx and typedData", () => {

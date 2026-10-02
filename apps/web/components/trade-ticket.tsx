@@ -70,9 +70,19 @@ export function TradeTicket() {
         />
         <Row label="Execution price" value={quote?.ok ? formatPx(quote.perShare) : quoting ? "quoting" : "—"} />
         <Row label="Est. tokens" value={qty} />
-        <Row label="Price impact" value={quote?.slipKnown ? `${quote.slipBps50} bps` : "—"} />
-        <Row label="Trading fee" value="—" hint="Aggregator tradeFee is not on this quote." />
-        <Row label="Gas" value={quote?.gasUsd ? formatPx(quote.gasUsd) : "—"} />
+        <Row label="Network fee" value={quote?.networkFeeUsd != null ? formatPx(quote.networkFeeUsd) : "—"} />
+        <Row
+          label="Gas estimate"
+          value={
+            quote?.gasEstimateUsd != null
+              ? formatPx(quote.gasEstimateUsd)
+              : quote?.estimatedGasUnits
+                ? `${quote.estimatedGasUnits} units`
+                : "—"
+          }
+        />
+        <Row label="Price impact" value={quote?.priceImpactPct != null ? formatPct(quote.priceImpactPct) : "—"} />
+        <Row label="Trade fee" value={quote?.tradeFeeUsd != null ? formatPx(quote.tradeFeeUsd) : "—"} />
         <Row label="Notional" value={validSize ? formatPx(notional) : "—"} />
         <Row label="Estimated net edge" value={edge ? formatPct(edge.netPct) : "—"} />
       </dl>

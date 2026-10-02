@@ -1,5 +1,5 @@
-import { getUnderlying, issuePassport, policyPublic, sourceFromActor } from "@parallax/core";
-import { readFriday, readSettings, spentTodayUsdt, writePassport } from "@parallax/core/persist";
+import { commitFromPrepare, getUnderlying, issuePassport, policyPublic, sourceFromActor } from "@parallax/core";
+import { readFriday, readSettings, spentTodayUsdt, writeCommitment, writePassport } from "@parallax/core/persist";
 import { prepareExecution } from "@parallax/web3";
 import { fail, readJson } from "@/lib/http";
 import type { Intent, VenueQuote } from "@parallax/core";
@@ -39,10 +39,12 @@ export async function POST(request: Request) {
       signer: body.intent.wallet,
     });
     writePassport(passport);
+    const commitment = commitFromPrepare(passport.hash, result);
+    if (commitment) writeCommitment(commitment);
     return Response.json({
       ok: result.step !== "rejected" && result.step !== "expired",
       ...result,
-      passport,
+      passport: commitment ? { ...passport, commitment } : passport,
       policy: passport.gate ? policyPublic(passport.gate) : null,
     });
   } catch (err) {

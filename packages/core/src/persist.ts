@@ -1,30 +1,21 @@
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import path from "node:path";
 import { readEnv } from "@parallax/config";
+import type { SigningCommitment } from "./commitment";
 import { etParts } from "./session";
 import { refreshPassport, type ExecutionPassport } from "./passport";
+import { receiptStatusFromTape, updateReceipt, type ExecutionReceipt } from "./receipt";
+import { getBackend } from "./store";
 import type { AgentBeat, AgentFill, ArmedStrategy, FridayPrint, Job, QueuedIntent, Settings, TapeRow } from "./types";
 import { RAILS } from "./types";
 
-function dir(): string {
-  const d = readEnv().dataDir;
-  mkdirSync(d, { recursive: true });
-  return d;
-}
+export { storeInfo, resetStoreBackend, FileStore, DurableStore } from "./store";
+export type { StoreInfo, StoreKind } from "./store";
 
 function readJson<T>(name: string, fallback: T): T {
-  const file = path.join(dir(), name);
-  if (!existsSync(file)) return fallback;
-  try {
-    return JSON.parse(readFileSync(file, "utf8")) as T;
-  } catch {
-    return fallback;
-  }
+  return getBackend().read(name, fallback);
 }
 
 function writeJson(name: string, value: unknown): void {
-  const file = path.join(dir(), name);
-  writeFileSync(file, JSON.stringify(value, null, 2));
+  getBackend().write(name, value);
 }
 
 export function defaultSettings(): Settings {
@@ -59,8 +50,9 @@ export function pushTape(row: TapeRow): TapeRow[] {
 }
 
 export function upsertTape(row: TapeRow): TapeRow[] {
-  const rows = readTape().filter((item) => item.id !== row.id);
-  const next = [row, ...rows].slice(0, 30);
+  const bound = bindTapeToReceipt(row);
+  const rows = readTape().filter((item) => item.id !== bound.id);
+  const next = [bound, ...rows].slice(0, 30);
   writeJson("tape.json", next);
   return next;
 }
@@ -154,8 +146,17 @@ export function readPassports(): ExecutionPassport[] {
 }
 
 export function writePassport(passport: ExecutionPassport): ExecutionPassport[] {
-  const rows = readPassports().filter((row) => row.hash !== passport.hash);
-  const next = [passport, ...rows].slice(0, 40);
+  const durable: ExecutionPassport = {
+    hash: passport.hash,
+    canonical: passport.canonical,
+    issuedAt: passport.issuedAt,
+    state: passport.state,
+    reason: passport.reason,
+    body: passport.body,
+    ...(passport.gate ? { gate: passport.gate } : {}),
+  };
+  const rows = readPassports().filter((row) => row.hash !== durable.hash);
+  const next = [durable, ...rows].slice(0, 40);
   writeJson("passports.json", next);
   return next;
 }
@@ -163,5 +164,119 @@ export function writePassport(passport: ExecutionPassport): ExecutionPassport[] 
 export function findPassport(hash: string): ExecutionPassport | undefined {
   const needle = hash.toLowerCase();
   const found = readPassports().find((row) => row.hash === needle || (needle.length >= 12 && row.hash.startsWith(needle)));
-  return found ? refreshPassport(found) : undefined;
+  if (!found) return undefined;
+  const passport = refreshPassport(found);
+  const receipt = findReceiptByPassport(passport.hash);
+  const commitment = findCommitmentByPassport(passport.hash) || (receipt?.signingCommitmentHash ? findCommitment(receipt.signingCommitmentHash) : undefined);
+  return { ...passport, commitment, receipt };
 }
+
+export function readCommitments(): SigningCommitment[] {
+  return readJson<SigningCommitment[]>("commitments.json", []);
+}
+
+export function writeCommitment(commitment: SigningCommitment): SigningCommitment[] {
+  const rows = readCommitments().filter((row) => row.hash !== commitment.hash);
+  const next = [commitment, ...rows].slice(0, 80);
+  writeJson("commitments.json", next);
+  return next;
+}
+
+export function findCommitment(hash: string): SigningCommitment | undefined {
+  const needle = hash.toLowerCase();
+  return readCommitments().find((row) => row.hash === needle || (needle.length >= 12 && row.hash.startsWith(needle)));
+}
+
+export function findCommitmentByPassport(passportHash: string): SigningCommitment | undefined {
+  return readCommitments().find((row) => row.passportHash === passportHash);
+}
+
+export function readReceipts(): ExecutionReceipt[] {
+  return readJson<ExecutionReceipt[]>("receipts.json", []);
+}
+
+export function writeReceipt(receipt: ExecutionReceipt): ExecutionReceipt[] {
+  const rows = readReceipts().filter((row) => row.id !== receipt.id && row.hash !== receipt.hash);
+  const next = [receipt, ...rows].slice(0, 80);
+  writeJson("receipts.json", next);
+  return next;
+}
+
+export function findReceipt(idOrHash: string): ExecutionReceipt | undefined {
+  const needle = idOrHash.toLowerCase();
+  return readReceipts().find(
+    (row) => row.id === idOrHash || row.hash === needle || (needle.length >= 12 && (row.hash.startsWith(needle) || row.passportHash.startsWith(needle))),
+  );
+}
+
+export function findReceiptByPassport(passportHash: string): ExecutionReceipt | undefined {
+  return readReceipts().find((row) => row.passportHash === passportHash);
+}
+
+function bindTapeToReceipt(row: TapeRow): TapeRow {
+  if (!row.passportHash) return row;
+  const existing = row.receiptId ? findReceipt(row.receiptId) : findReceiptByPassport(row.passportHash);
+  if (!existing) return row;
+  const status = receiptStatusFromTape(row.status);
+  let receipt = existing;
+  if (
+    status &&
+    (status !== existing.status ||
+      (row.txHash && row.txHash !== existing.txHash) ||
+      (row.orderId && row.orderId !== existing.orderId))
+  ) {
+    receipt = updateReceipt(existing, {
+      status,
+      txHash: row.txHash ?? existing.txHash,
+      orderId: row.orderId ?? existing.orderId,
+      filledAt: status === "filled" ? existing.filledAt ?? Date.now() : existing.filledAt,
+    });
+    writeReceipt(receipt);
+  }
+  return {
+    ...row,
+    receiptId: receipt.id,
+    signingCommitmentHash: receipt.signingCommitmentHash ?? row.signingCommitmentHash,
+  };
+}
+
+export function rememberExecution(input: {
+  passport: ExecutionPassport;
+  commitment?: SigningCommitment | null;
+  receipt?: ExecutionReceipt | null;
+  tape?: TapeRow;
+}): void {
+  writePassport(input.passport);
+  if (input.commitment) writeCommitment(input.commitment);
+  if (input.receipt) writeReceipt(input.receipt);
+  if (input.tape) upsertTape(input.tape);
+}
+
+export const PassportStore = {
+  list: readPassports,
+  write: writePassport,
+  find: findPassport,
+};
+
+export const ExecutionStore = {
+  writeCommitment,
+  findCommitment,
+  findCommitmentByPassport,
+  listCommitments: readCommitments,
+  writeReceipt,
+  findReceipt,
+  findByPassport: findReceiptByPassport,
+  listReceipts: readReceipts,
+};
+
+export const ActivityStore = {
+  readTape,
+  upsertTape,
+  readFills,
+  pushFill,
+};
+
+export const SettingsStore = {
+  read: readSettings,
+  write: writeSettings,
+};

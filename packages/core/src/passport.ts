@@ -1,5 +1,13 @@
 import { canonicalHash, canonicalJson } from "./canonical";
-import { evaluatePolicy, type PolicyDecision, type PolicySource } from "./policy";
+import type { SigningCommitment } from "./commitment";
+import {
+  evaluatePolicy,
+  resolveExecutionRequirement,
+  type ExecutionRequirement,
+  type PolicyDecision,
+  type PolicySource,
+} from "./policy";
+import type { ExecutionReceipt } from "./receipt";
 import { plainSimulate } from "./router";
 import type { Address, ExecMode, Intent, Rail, RailBook, Settings, Side, VenueQuote } from "./types";
 import { COPY, QUOTE_TTL_MS } from "./types";
@@ -61,16 +69,6 @@ export interface PassportIntent {
   actor: "user" | "agent";
 }
 
-export interface PassportMoney {
-  usd: number | null;
-  source: "tradeFee";
-}
-
-export interface PassportImpact {
-  percent: number | null;
-  source: "priceImpactPercent" | "slipBps50" | "unknown";
-}
-
 export interface PassportBody {
   intent: PassportIntent;
   underlying: { ticker: string; name: string };
@@ -101,9 +99,13 @@ export interface PassportBody {
   expiresAt: number;
   reference: { price: number | null; label: string };
   multiplier: number;
-  priceImpact: PassportImpact;
-  networkFee: PassportMoney;
-  gasEstimate: PassportMoney;
+  networkFeeUsd: number | null;
+  gasEstimateUsd: number | null;
+  gasPrice: string | null;
+  estimatedGasUnits: string | null;
+  priceImpactPct: number | null;
+  tradeFeeUsd: number | null;
+  executionRequirement: ExecutionRequirement;
   policy: PassportCheck[];
   simulation: PassportSimulation;
 }
@@ -116,6 +118,8 @@ export interface ExecutionPassport {
   reason: string;
   body: PassportBody;
   gate?: PolicyDecision;
+  commitment?: SigningCommitment;
+  receipt?: ExecutionReceipt;
 }
 
 export interface PassportBook {
@@ -139,6 +143,7 @@ export interface IssuePassportInput {
   liquidity?: number;
   source?: PolicySource;
   signer?: string | null;
+  executionRequirement?: ExecutionRequirement;
 }
 
 const HARD_CHECKS: PassportCheckId[] = ["kill_switch", "allowed_rail", "order_cap", "daily_cap"];
@@ -186,6 +191,7 @@ export function passportFromBook(input: {
   liquidity?: number;
   source?: PolicySource;
   signer?: string | null;
+  executionRequirement?: ExecutionRequirement;
 }): ExecutionPassport | null {
   const quote = selectQuote(input.book, input.intent.railLock);
   if (!quote) return null;
@@ -201,6 +207,7 @@ export function passportFromBook(input: {
     liquidity: input.liquidity,
     source: input.source,
     signer: input.signer,
+    executionRequirement: input.executionRequirement,
   });
 }
 
@@ -212,10 +219,15 @@ export function issuePassport(input: IssuePassportInput): ExecutionPassport {
   const expiresAt = quote.quoteExpiresAt;
   const quotedAt = expiresAt - QUOTE_TTL_MS;
   const referencePrice = input.reference.price && input.reference.price > 0 ? input.reference.price : null;
-  const fee = moneyFromQuote(quote);
+  const costs = costsFromQuote(quote, input.prepare);
   const snap = prepareSnapshot(input.prepare);
   const simulation = simulationFromPrepare(snap);
   const source = input.source ?? (actor === "agent" ? "agentic" : "ui");
+  const executionRequirement = resolveExecutionRequirement({
+    executionRequirement: input.executionRequirement,
+    prepareStep: snap?.step,
+    quote,
+  });
   const gate = evaluatePolicy({
     source,
     mode: snap ? "execute" : "preview",
@@ -230,6 +242,7 @@ export function issuePassport(input: IssuePassportInput): ExecutionPassport {
     simulateStatus: snap?.simulateStatus ?? (snap?.step === "sign-rfq" ? "NONE" : simulation.status),
     simulateReason: snap?.simulateReason ?? simulation.reason,
     prepareStep: snap?.step,
+    executionRequirement,
   });
   const policy = gate.checks.map((row) => ({
     id: row.id as PassportCheckId,
@@ -274,9 +287,13 @@ export function issuePassport(input: IssuePassportInput): ExecutionPassport {
     expiresAt,
     reference: { price: referencePrice, label: input.reference.label },
     multiplier: quote.wrapper.multiplier,
-    priceImpact: impactFromQuote(quote),
-    networkFee: fee,
-    gasEstimate: fee,
+    networkFeeUsd: costs.networkFeeUsd,
+    gasEstimateUsd: costs.gasEstimateUsd,
+    gasPrice: costs.gasPrice,
+    estimatedGasUnits: costs.estimatedGasUnits,
+    priceImpactPct: costs.priceImpactPct,
+    tradeFeeUsd: costs.tradeFeeUsd,
+    executionRequirement,
     policy,
     simulation,
   };
@@ -312,7 +329,8 @@ export function derivePassportState(body: PassportBody, now: number): PassportSt
   if (sim.status === "FAILED") return "sim_failed";
   if (body.policy.some((check) => LIMIT_CHECKS.includes(check.id) && !check.pass)) return "rejected";
   if (!body.quote.slipKnown || body.reference.price == null) return "incomplete";
-  if (sim.step === "sign-rfq") return "ready";
+  if (body.executionRequirement === "AGENTIC_MARKET") return "ready";
+  if (sim.step === "sign-rfq" || body.executionRequirement === "RFQ") return sim.step === "sign-rfq" ? "ready" : "quoted";
   if (sim.step === "sign-swap" && sim.status === "SUCCESS") return "ready";
   return "quoted";
 }
@@ -340,17 +358,40 @@ function simulationFromPrepare(prepare?: PassportPrepare): PassportSimulation {
   };
 }
 
-function moneyFromQuote(quote: VenueQuote): PassportMoney {
-  const usd = Number.isFinite(quote.gasUsd) && quote.gasUsd > 0 ? quote.gasUsd : null;
-  return { usd, source: "tradeFee" };
+function finiteOrNull(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
-function impactFromQuote(quote: VenueQuote): PassportImpact {
+function stringOrNull(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  const text = String(value);
+  return text.length ? text : null;
+}
+
+function costsFromQuote(quote: VenueQuote, prepare?: unknown): {
+  networkFeeUsd: number | null;
+  gasEstimateUsd: number | null;
+  gasPrice: string | null;
+  estimatedGasUnits: string | null;
+  priceImpactPct: number | null;
+  tradeFeeUsd: number | null;
+} {
   const raw = quote.raw && typeof quote.raw === "object" ? (quote.raw as Record<string, unknown>) : {};
-  const n = Number(raw.priceImpactPercent);
-  if (Number.isFinite(n)) return { percent: n, source: "priceImpactPercent" };
-  if (quote.slipKnown) return { percent: quote.slipBps50 / 100, source: "slipBps50" };
-  return { percent: null, source: "unknown" };
+  const tx =
+    prepare && typeof prepare === "object" && "tx" in prepare && prepare.tx && typeof prepare.tx === "object"
+      ? (prepare.tx as Record<string, unknown>)
+      : {};
+  const networkFeeUsd = quote.networkFeeUsd ?? finiteOrNull(raw.tradeFee);
+  return {
+    networkFeeUsd,
+    gasEstimateUsd: quote.gasEstimateUsd ?? null,
+    gasPrice: quote.gasPrice ?? stringOrNull(tx.gasPrice) ?? stringOrNull(raw.gasPrice),
+    estimatedGasUnits: quote.estimatedGasUnits ?? stringOrNull(tx.gas) ?? stringOrNull(raw.estimateGasFee),
+    priceImpactPct: quote.priceImpactPct ?? finiteOrNull(raw.priceImpactPercent),
+    tradeFeeUsd: quote.tradeFeeUsd ?? finiteOrNull(raw.feeAmount),
+  };
 }
 
 function stateReason(body: PassportBody, state: PassportState): string {

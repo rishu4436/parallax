@@ -1,6 +1,6 @@
-import { upsertTape } from "@parallax/core/persist";
+import { findCommitmentByPassport, upsertTape, writeReceipt } from "@parallax/core/persist";
 import { getRfqOrder, submitRfq } from "@parallax/web3";
-import type { TapeRow } from "@parallax/core";
+import { issueReceipt, type TapeRow } from "@parallax/core";
 import { fail, readJson } from "@/lib/http";
 
 export async function POST(request: Request) {
@@ -21,12 +21,27 @@ export async function POST(request: Request) {
       signingScheme: body.signingScheme,
     });
     const data = (sent.data ?? {}) as { orderId?: string; status?: string };
+    const commitment = body.tape.passportHash ? findCommitmentByPassport(body.tape.passportHash) : undefined;
+    const receipt =
+      body.tape.passportHash
+        ? issueReceipt({
+            id: data.orderId || body.requestId,
+            passportHash: body.tape.passportHash,
+            signingCommitmentHash: commitment?.hash ?? body.tape.signingCommitmentHash,
+            orderId: data.orderId,
+            status: "submitted",
+            source: body.tape.source === "agent" ? "agentic" : "ui",
+          })
+        : undefined;
+    if (receipt) writeReceipt(receipt);
     upsertTape({
       ...body.tape,
       status: data.status || "submitted",
       orderId: data.orderId,
+      signingCommitmentHash: receipt?.signingCommitmentHash ?? commitment?.hash ?? body.tape.signingCommitmentHash,
+      receiptId: receipt?.id,
     });
-    return Response.json({ ok: true, orderId: data.orderId, status: data.status, raw: sent.raw });
+    return Response.json({ ok: true, orderId: data.orderId, status: data.status, receipt, raw: sent.raw });
   } catch (err) {
     return fail(err);
   }

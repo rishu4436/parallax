@@ -68,13 +68,21 @@ export function PassportCompact({ passport }: { passport: ExecutionPassport }) {
   );
 }
 
+function money(value: number | null | undefined): string {
+  return value == null ? "—" : formatPx(value);
+}
+
+function gasEstimate(body: ExecutionPassport["body"]): string {
+  if (body.gasEstimateUsd != null) return formatPx(body.gasEstimateUsd);
+  if (body.estimatedGasUnits) {
+    return body.gasPrice ? `${body.estimatedGasUnits} units · ${body.gasPrice} wei` : `${body.estimatedGasUnits} units`;
+  }
+  return "—";
+}
+
 function PassportBody({ passport }: { passport: ExecutionPassport }) {
   const body = passport.body;
   const left = body.expiresAt - Date.now();
-  const impact =
-    body.priceImpact.percent == null ? "—" : body.priceImpact.source === "slipBps50" ? `${(body.priceImpact.percent * 100).toFixed(0)} bps` : formatPct(body.priceImpact.percent);
-  const fee = body.networkFee.usd == null ? "—" : formatPx(body.networkFee.usd);
-  const gas = body.gasEstimate.usd == null ? "—" : formatPx(body.gasEstimate.usd);
 
   return (
     <>
@@ -89,13 +97,15 @@ function PassportBody({ passport }: { passport: ExecutionPassport }) {
         <Row label="Quote" value={body.quote.quoteId || (body.quote.ok ? "live" : body.quote.errorText || "—")} />
         <Row label="Vendor" value={body.vendor || "—"} />
         <Row label="Execution" value={body.executionMode || "—"} />
+        <Row label="Requirement" value={body.executionRequirement.replaceAll("_", " ")} />
         <Row label="Quoted" value={new Date(body.quotedAt).toISOString()} />
         <Row label="Expiry" value={left <= 0 ? "expired" : formatTtl(left)} />
         <Row label="Reference" value={body.reference.price ? `${formatPx(body.reference.price)} · ${body.reference.label}` : body.reference.label} />
         <Row label="Multiplier" value={String(body.multiplier)} />
-        <Row label="Price impact" value={impact} />
-        <Row label="Network fee" value={`${fee} · ${body.networkFee.source}`} />
-        <Row label="Gas estimate" value={`${gas} · ${body.gasEstimate.source}`} />
+        <Row label="Network fee" value={money(body.networkFeeUsd)} />
+        <Row label="Gas estimate" value={gasEstimate(body)} />
+        <Row label="Price impact" value={body.priceImpactPct == null ? "—" : formatPct(body.priceImpactPct)} />
+        <Row label="Trade fee" value={money(body.tradeFeeUsd)} />
         <Row
           label="Simulation"
           value={body.simulation.step ? `${body.simulation.status} · ${body.simulation.step}` : body.simulation.status}
@@ -108,6 +118,15 @@ function PassportBody({ passport }: { passport: ExecutionPassport }) {
               : "—"
           }
         />
+        {passport.commitment ? (
+          <Row label="Signing commitment" value={`${passport.commitment.scheme} · ${shortPassportHash(passport.commitment.hash)}`} />
+        ) : null}
+        {passport.receipt ? (
+          <Row
+            label="Receipt"
+            value={`${passport.receipt.status} · ${passport.receipt.txHash || passport.receipt.orderId || shortPassportHash(passport.receipt.hash)}`}
+          />
+        ) : null}
       </dl>
       {passport.gate?.primary ? (
         <p className="mt-3 text-sm text-down">

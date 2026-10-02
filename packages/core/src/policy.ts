@@ -21,6 +21,9 @@ export type PolicySource = (typeof POLICY_SOURCES)[number];
 export const POLICY_MODES = ["preview", "execute"] as const;
 export type PolicyMode = (typeof POLICY_MODES)[number];
 
+export const EXECUTION_REQUIREMENTS = ["EVM_SIMULATION", "RFQ", "AGENTIC_MARKET"] as const;
+export type ExecutionRequirement = (typeof EXECUTION_REQUIREMENTS)[number];
+
 export const POLICY_CHECK_IDS = [
   "kill_switch",
   "allowed_rail",
@@ -98,8 +101,9 @@ export interface PolicyProposal {
   simulateStatus?: "SUCCESS" | "FAILED" | "PENDING" | "NONE";
   simulateReason?: string;
   prepareStep?: "rejected" | "expired" | "approve" | "sign-rfq" | "sign-swap";
-  /** False for baw market-order (no EVM tx). SWAP Web3 sends stay required. */
+  /** False for baw market-order (no EVM tx). Prefer executionRequirement. */
   requireSimulation?: boolean;
+  executionRequirement?: ExecutionRequirement;
 }
 
 export interface PolicyPublicCheck {
@@ -167,6 +171,18 @@ export function policyPublic(decision: PolicyDecision): PolicyPublic {
       nextAction: row.failure?.nextAction ?? "none",
     })),
   };
+}
+
+export function resolveExecutionRequirement(proposal: {
+  executionRequirement?: ExecutionRequirement;
+  requireSimulation?: boolean;
+  prepareStep?: PolicyProposal["prepareStep"];
+  quote?: VenueQuote | null;
+}): ExecutionRequirement {
+  if (proposal.executionRequirement) return proposal.executionRequirement;
+  if (proposal.requireSimulation === false) return "AGENTIC_MARKET";
+  if (proposal.prepareStep === "sign-rfq" || proposal.quote?.executionMode === "RFQ") return "RFQ";
+  return "EVM_SIMULATION";
 }
 
 export function blockedBuildMessage(decision: PolicyDecision): string | null {
@@ -403,7 +419,8 @@ function checkSigner(proposal: PolicyProposal, quote: VenueQuote | null, mode: P
 }
 
 function checkSimulation(proposal: PolicyProposal, quote: VenueQuote | null, mode: PolicyMode): PolicyCheck {
-  if (proposal.requireSimulation === false) return pass("simulation");
+  const requirement = resolveExecutionRequirement({ ...proposal, quote });
+  if (requirement === "AGENTIC_MARKET" || requirement === "RFQ") return pass("simulation");
   if (!quote?.ok) return pass("simulation");
   if (proposal.prepareStep === "rejected" || proposal.prepareStep === "expired") return pass("simulation");
   if (proposal.prepareStep === "approve") {
@@ -417,7 +434,6 @@ function checkSimulation(proposal: PolicyProposal, quote: VenueQuote | null, mod
     }
     return pass("simulation");
   }
-  if (proposal.prepareStep === "sign-rfq" || quote.executionMode === "RFQ") return pass("simulation");
   if (mode === "preview") return pass("simulation");
   const status = proposal.simulateStatus || (proposal.prepareStep === "sign-swap" ? "NONE" : undefined);
   if (status === "SUCCESS") return pass("simulation");

@@ -1,11 +1,13 @@
 import { readEnv } from "@parallax/config";
 import {
   cashSession,
+  commitAgenticSwap,
   decideJob,
-  evaluatePolicy,
   fetchCashPrints,
   fridayPrintFromCash,
   gapPct,
+  issuePassport,
+  issueReceipt,
   jobDue,
   jobQuoteUsdt,
   jobRailLock,
@@ -13,10 +15,21 @@ import {
   listUnderlyings,
   nextLastAt,
   policyAllowsSend,
+  receiptStatusFromSend,
   RouterReject,
   snapshotRails,
 } from "@parallax/core";
-import { pushQueue, readJobs, readQueue, readSettings, spentTodayUsdt, upsertTape, writeBeat, writeFriday, writeJobs } from "@parallax/core/persist";
+import {
+  pushQueue,
+  readJobs,
+  readQueue,
+  rememberExecution,
+  readSettings,
+  spentTodayUsdt,
+  writeBeat,
+  writeFriday,
+  writeJobs,
+} from "@parallax/core/persist";
 import { quoteIntent } from "@parallax/web3";
 import { randomUUID } from "node:crypto";
 import { runArmedDesk } from "./agentRuntime";
@@ -133,50 +146,85 @@ async function runTick() {
           }
           const rail = intent.railLock || book.best?.wrapper.rail;
           const row = book.books.find((item) => item.wrapper.rail === rail) || book.best;
-          const policy = evaluatePolicy({
-            source: "strategy",
-            mode: "execute",
-            now: now.getTime(),
+          const quote = row?.best;
+          if (!quote) {
+            notes.push("No executable quote is on the book.");
+            continue;
+          }
+          const passport = issuePassport({
             intent: { ...intent, actor: "agent", wallet: agent ?? intent.wallet, railLock: rail },
-            settings,
-            spentToday: spentTodayUsdt(now),
-            quote: row?.best,
-            signer: agent,
+            quote,
+            underlying: { ticker: book.underlying.ticker, name: book.underlying.name },
             reference: {
               price: book.priorClose ?? book.fridayClose,
               label: book.priorClose ? "prior cash close" : "Friday cash close",
             },
-            requireSimulation: false,
+            settings,
+            spentToday: spentTodayUsdt(now),
+            now: now.getTime(),
+            source: "strategy",
+            signer: agent,
+            executionRequirement: "AGENTIC_MARKET",
           });
-          if (!policyAllowsSend(policy)) {
-            notes.push(`${policy.verdict} ${policy.primary?.code || ""}: ${policy.primary?.human || "policy blocked"}`.trim());
+          rememberExecution({ passport });
+          if (!passport.gate || !policyAllowsSend(passport.gate)) {
+            notes.push(
+              `${passport.gate?.verdict || "BLOCK"} ${passport.gate?.primary?.code || ""}: ${passport.gate?.primary?.human || passport.reason}`.trim(),
+            );
             continue;
           }
           if (agent && row?.wrapper.address) {
             try {
+              const tokenQty = intent.side === "sell" ? tokenQtyFromNotional(intent.usdt, quote.perShare) || undefined : undefined;
+              const commitment = commitAgenticSwap({
+                passportHash: passport.hash,
+                side: intent.side,
+                token: row.wrapper.address,
+                usdt: intent.usdt,
+                tokenQty,
+              });
               const sent = await sendAgentSwap({
                 side: intent.side,
                 usdt: intent.usdt,
                 token: row.wrapper.address,
-                tokenQty: intent.side === "sell" ? tokenQtyFromNotional(intent.usdt, row.best?.perShare) || undefined : undefined,
+                tokenQty,
               });
-              notes.push(sent.note);
-              if (sent.txHash || sent.note.includes("failed")) {
-                upsertTape({
-                  id: sent.orderId || randomUUID(),
-                  at: now.getTime(),
-                  side: intent.side,
-                  ticker: intent.ticker,
-                  symbol: row.wrapper.symbol,
-                  rail: row.wrapper.rail,
-                  usd: intent.usdt,
-                  status: sent.note.includes("failed") ? "failed" : "filled",
-                  txHash: sent.txHash,
-                  orderId: sent.orderId,
-                  vendorName: row.best?.vendorName,
-                  source: "agent",
-                });
-              }
+              const receipt = issueReceipt({
+                id: sent.orderId || randomUUID(),
+                passportHash: passport.hash,
+                signingCommitmentHash: commitment.hash,
+                txHash: sent.txHash,
+                orderId: sent.orderId,
+                status: receiptStatusFromSend(sent),
+                source: "strategy",
+                note: sent.note,
+              });
+              notes.push(`${sent.note} · passport ${passport.hash.slice(0, 12)}`);
+              rememberExecution({
+                passport,
+                commitment,
+                receipt,
+                tape:
+                  sent.txHash || sent.orderId || sent.note.includes("failed")
+                    ? {
+                        id: sent.orderId || receipt.id,
+                        at: now.getTime(),
+                        side: intent.side,
+                        ticker: intent.ticker,
+                        symbol: row.wrapper.symbol,
+                        rail: row.wrapper.rail,
+                        usd: intent.usdt,
+                        status: sent.note.includes("failed") ? "failed" : sent.done ? "filled" : "submitted",
+                        txHash: sent.txHash,
+                        orderId: sent.orderId,
+                        vendorName: quote.vendorName,
+                        source: "agent",
+                        passportHash: passport.hash,
+                        signingCommitmentHash: commitment.hash,
+                        receiptId: receipt.id,
+                      }
+                    : undefined,
+              });
               if (sent.done) queuedAny = true;
               if (sent.pending) retryMs = 20_000;
               console.log(sent.note);

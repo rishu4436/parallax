@@ -1,6 +1,6 @@
-import { upsertTape } from "@parallax/core/persist";
+import { findCommitmentByPassport, upsertTape, writeReceipt } from "@parallax/core/persist";
 import { broadcastEvm, getBroadcastOrders, getSwapHistory } from "@parallax/web3";
-import type { TapeRow } from "@parallax/core";
+import { issueReceipt, type TapeRow } from "@parallax/core";
 import { fail, readJson } from "@/lib/http";
 
 export async function POST(request: Request) {
@@ -8,15 +8,31 @@ export async function POST(request: Request) {
     const body = await readJson<{ signedTransaction: string; address: `0x${string}`; tape: TapeRow }>(request);
     const sent = await broadcastEvm(body.signedTransaction, body.address);
     const data = (sent.data ?? {}) as { txHash?: string; orderId?: string };
+    const commitment = body.tape.passportHash ? findCommitmentByPassport(body.tape.passportHash) : undefined;
+    const receipt =
+      body.tape.passportHash
+        ? issueReceipt({
+            id: data.orderId || body.tape.id,
+            passportHash: body.tape.passportHash,
+            signingCommitmentHash: commitment?.hash ?? body.tape.signingCommitmentHash,
+            txHash: data.txHash,
+            orderId: data.orderId,
+            status: data.txHash ? "submitted" : "failed",
+            source: body.tape.source === "agent" ? "agentic" : "ui",
+          })
+        : undefined;
+    if (receipt) writeReceipt(receipt);
     const row: TapeRow = {
       ...body.tape,
       status: data.txHash ? "submitted" : "failed",
       txHash: data.txHash,
       orderId: data.orderId,
       errorText: data.txHash ? undefined : "Broadcast returned no hash",
+      signingCommitmentHash: receipt?.signingCommitmentHash ?? commitment?.hash ?? body.tape.signingCommitmentHash,
+      receiptId: receipt?.id,
     };
     upsertTape(row);
-    return Response.json({ ok: Boolean(data.txHash), txHash: data.txHash, orderId: data.orderId, raw: sent.raw });
+    return Response.json({ ok: Boolean(data.txHash), txHash: data.txHash, orderId: data.orderId, receipt, raw: sent.raw });
   } catch (err) {
     return fail(err);
   }

@@ -13,6 +13,7 @@ import {
   readTape,
   readWorkerEnabled,
   spentTodayUsdt,
+  storeInfo,
   writeFriday,
 } from "@parallax/core/persist";
 import { fetchMarketPrint, hydrateCashPrints, readBalances } from "@parallax/web3";
@@ -101,6 +102,7 @@ export async function GET(request: Request) {
       armed: readArmed(),
       workerEnabled: readWorkerEnabled(),
       fills: readFills(),
+      store: storeInfo(),
     });
   } catch (err) {
     return fail(err);

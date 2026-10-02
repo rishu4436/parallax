@@ -160,6 +160,7 @@ export function ConfirmTakeover() {
       vendorName: quote.vendorName,
       source: confirm.actor,
       passportHash: confirm.passport?.hash,
+      signingCommitmentHash: confirm.passport?.commitment?.hash,
     };
     try {
       if (result.step === "approve") {
