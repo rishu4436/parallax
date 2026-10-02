@@ -14,6 +14,10 @@ export interface DevexEvent {
   executedPerShare?: number;
   slipBps?: number;
   note?: string;
+  /** Retries observed before this result. Absent when the call did not record them. */
+  retries?: number;
+  ok?: boolean;
+  errorCode?: number;
 }
 
 interface DevexFile {
@@ -46,6 +50,17 @@ export function recordDevex(event: DevexEvent): void {
       writeFileSync(file, JSON.stringify(next, null, 2));
     })
     .catch(() => undefined);
+}
+
+export function readDevex(): DevexEvent[] {
+  const file = metricsPath();
+  if (!existsSync(file)) return [];
+  try {
+    const current = JSON.parse(readFileSync(file, "utf8")) as DevexFile;
+    return Array.isArray(current.events) ? current.events.slice(-200) : [];
+  } catch {
+    return [];
+  }
 }
 
 export function recordSlippage(input: {

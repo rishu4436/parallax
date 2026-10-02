@@ -22,6 +22,7 @@ export * from "./agentDesk";
 export * from "./portfolioView";
 export * from "./activityView";
 export * from "./strategyView";
+export * from "./developerView";
 export * from "./markets";
 export * from "./copilot";
 export * from "./flag";

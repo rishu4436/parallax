@@ -8,9 +8,10 @@ export const NAV = [
   { href: "/strategies", id: "strategies", label: "Strategies", kicker: "05" },
   { href: "/agents", id: "agents", label: "Agents", kicker: "06" },
   { href: "/activity", id: "activity", label: "Activity", kicker: "07" },
-  { href: "/desk", id: "trade", label: "Trade", kicker: "08" },
-  { href: "/jobs", id: "jobs", label: "Jobs", kicker: "09" },
-  { href: "/wallet", id: "wallet", label: "Wallet", kicker: "10" },
+  { href: "/developer", id: "developer", label: "Developer", kicker: "08" },
+  { href: "/desk", id: "trade", label: "Trade", kicker: "09" },
+  { href: "/jobs", id: "jobs", label: "Jobs", kicker: "10" },
+  { href: "/wallet", id: "wallet", label: "Wallet", kicker: "11" },
 ] as const;
 
 export function hrefForView(view: DeskView): string {

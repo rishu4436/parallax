@@ -113,7 +113,7 @@ export async function web3Fetch(
         recordDevex({
           at: new Date().toISOString(),
           kind: "rate_limit",
-          path: pathWithQuery,
+          path: apiPath,
           status: 0,
           ttfbMs: Date.now() - started,
           backoffMs: wait,
@@ -124,6 +124,17 @@ export async function web3Fetch(
         continue;
       }
       const message = err instanceof Error ? err.message : String(err);
+      recordDevex({
+        at: new Date().toISOString(),
+        kind: "latency",
+        path: apiPath,
+        status: 0,
+        ttfbMs: Date.now() - started,
+        retries: attempt,
+        ok: false,
+        errorCode: 0,
+        note: "network error",
+      });
       throw new Web3ApiError(0, message, null, 0);
     }
     const ttfbMs = Date.now() - started;
@@ -133,11 +144,12 @@ export async function web3Fetch(
       recordDevex({
         at: new Date().toISOString(),
         kind: "rate_limit",
-        path: pathWithQuery,
+        path: apiPath,
         status: res.status,
         ttfbMs,
         backoffMs: wait,
         recovered: false,
+        retries: attempt + 1,
         note: `retry ${attempt + 1} of ${MAX_RETRIES} after HTTP ${res.status}`,
       });
       await res.text().catch(() => "");
@@ -146,28 +158,51 @@ export async function web3Fetch(
     }
     const text = await res.text();
     const ms = Date.now() - started;
-    recordDevex({
-      at: new Date().toISOString(),
-      kind: "latency",
-      path: pathWithQuery,
-      status: res.status,
-      ttfbMs,
-      backoffMs: waited || undefined,
-      recovered: waited > 0 && res.ok,
-    });
     let json: Record<string, unknown> = {};
     try {
       json = text ? (JSON.parse(text) as Record<string, unknown>) : {};
     } catch {
+      recordDevex({
+        at: new Date().toISOString(),
+        kind: "latency",
+        path: apiPath,
+        status: res.status,
+        ttfbMs,
+        retries: attempt,
+        ok: false,
+        note: "unreadable response",
+      });
       throw new Web3ApiError(res.status, text.slice(0, 500) || res.statusText, text, res.status);
     }
     const code = Number(json.code ?? (res.ok ? 0 : res.status));
     if (!res.ok || !successCode(json.code ?? 0, json.success)) {
       const msg = String(json.msg || json.message || res.statusText || "Web3 API error");
       const errorCode = Number.isFinite(code) ? code : res.status;
-      captureError(errorCode, pathWithQuery, json);
+      captureError(errorCode, apiPath, { code: errorCode, msg });
+      recordDevex({
+        at: new Date().toISOString(),
+        kind: "latency",
+        path: apiPath,
+        status: res.status,
+        ttfbMs,
+        retries: attempt,
+        ok: false,
+        errorCode,
+        note: msg.slice(0, 180),
+      });
       throw new Web3ApiError(errorCode, msg, json, res.status);
     }
+    recordDevex({
+      at: new Date().toISOString(),
+      kind: "latency",
+      path: apiPath,
+      status: res.status,
+      ttfbMs,
+      backoffMs: waited || undefined,
+      recovered: waited > 0 && res.ok,
+      retries: attempt,
+      ok: true,
+    });
     return { data: json.data, raw: json, ms };
   }
   throw new Web3ApiError(429, "Rate limit persisted after backoff", null, 429);
