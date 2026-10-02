@@ -139,6 +139,7 @@ export function ActivityWorkspace() {
             <Link href="/markets" className="inline-flex h-11 items-center text-[11px] tracking-[0.16em] text-gold">Explore markets</Link>
             <Link href="/opportunities" className="inline-flex h-11 items-center text-[11px] tracking-[0.16em] text-gold">View opportunities</Link>
             <Link href="/agents" className="inline-flex h-11 items-center text-[11px] tracking-[0.16em] text-gold">Open agents</Link>
+            <Link href="/replay" className="inline-flex h-11 items-center text-[11px] tracking-[0.16em] text-dim">Replay a scenario</Link>
           </div>
         </div>
       ) : (

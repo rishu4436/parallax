@@ -23,6 +23,7 @@ export * from "./portfolioView";
 export * from "./activityView";
 export * from "./strategyView";
 export * from "./developerView";
+export * from "./replayView";
 export * from "./markets";
 export * from "./copilot";
 export * from "./flag";
