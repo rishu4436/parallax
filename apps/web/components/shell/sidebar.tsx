@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { shortAddr } from "@parallax/core";
 import { Mark } from "@/components/mark";
-import { NAV, navActive } from "@/lib/nav";
+import { NAV_GROUPS, navActive } from "@/lib/nav";
 import { useParallax } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -23,19 +23,25 @@ export function Sidebar() {
       <div className="flex h-16 items-center border-b border-line px-5">
         <Mark />
       </div>
-      <nav className="flex flex-1 flex-col gap-1 px-3 py-5" aria-label="Desk">
-        {NAV.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "flex items-baseline justify-between px-2 py-2 text-[11px] tracking-[0.16em]",
-              navActive(pathname, item.href) ? "text-gold" : "text-dim hover:text-ink",
-            )}
-          >
-            <span>{item.label}</span>
-            <span className="num text-[10px] text-dim">{item.kicker}</span>
-          </Link>
+      <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-5" aria-label="Parallax">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.id}>
+            <p className="px-2 text-[10px] tracking-[0.16em] text-dim" id={`nav-${group.id}`}>{group.label}</p>
+            <div className="mt-1 flex flex-col" role="group" aria-labelledby={`nav-${group.id}`}>
+              {group.items.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "px-2 py-2 text-[11px] tracking-[0.16em]",
+                    navActive(pathname, item.href) ? "text-gold" : "text-dim hover:text-ink",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
         ))}
         <button
           className="mt-4 px-2 py-2 text-left text-[11px] tracking-[0.16em] text-dim hover:text-gold"

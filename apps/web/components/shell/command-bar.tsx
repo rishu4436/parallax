@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
-import { DEMO_SCENARIOS, localClock } from "@parallax/core";
+import Link from "next/link";
+import { localClock } from "@parallax/core";
 import { Mark } from "@/components/mark";
 import { WalletChip } from "@/components/wallet-chip";
 import { useParallax } from "@/lib/store";
@@ -48,19 +49,15 @@ export function CommandBar() {
       >
         {command.trim() || `Name, ticker, buy 25 NVDA · ${shortcut}`}
       </button>
-      <select
-        className={`hidden max-w-[9rem] bg-transparent text-[11px] tracking-[0.08em] sm:block ${demo ? "text-gold" : "text-dim"}`}
-        value={demo?.id || ""}
-        onChange={(event) => setDemo((event.target.value || null) as (typeof DEMO_SCENARIOS)[number]["id"] | null)}
-        aria-label="Demo scenario"
-      >
-        <option value="">Live quotes</option>
-        {DEMO_SCENARIOS.map((row) => (
-          <option key={row.id} value={row.id}>
-            DEMO · {row.label}
-          </option>
-        ))}
-      </select>
+      {demo ? (
+        <button type="button" className="hidden text-[11px] tracking-[0.14em] text-gold sm:block" onClick={() => setDemo(null)}>
+          Scenario on · Live quotes
+        </button>
+      ) : (
+        <Link href="/replay" className="hidden text-[11px] tracking-[0.14em] text-dim hover:text-gold sm:block">
+          Replay
+        </Link>
+      )}
       <button className="hidden text-[11px] tracking-[0.16em] text-dim hover:text-gold sm:block desk:hidden" onClick={() => setCopilotOpen(true)}>
         Copilot
       </button>

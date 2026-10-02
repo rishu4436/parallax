@@ -1,17 +1,50 @@
 export type DeskView = "trade" | "jobs" | "wallet";
 
-export const NAV = [
-  { href: "/", id: "home", label: "Overview", kicker: "01" },
-  { href: "/markets", id: "markets", label: "Markets", kicker: "02" },
-  { href: "/opportunities", id: "opportunities", label: "Opportunities", kicker: "03" },
-  { href: "/portfolio", id: "portfolio", label: "Portfolio", kicker: "04" },
-  { href: "/strategies", id: "strategies", label: "Strategies", kicker: "05" },
-  { href: "/agents", id: "agents", label: "Agents", kicker: "06" },
-  { href: "/activity", id: "activity", label: "Activity", kicker: "07" },
-  { href: "/developer", id: "developer", label: "Developer", kicker: "08" },
-  { href: "/desk", id: "trade", label: "Trade", kicker: "09" },
-  { href: "/jobs", id: "jobs", label: "Jobs", kicker: "10" },
-  { href: "/wallet", id: "wallet", label: "Wallet", kicker: "11" },
+export const NAV_GROUPS = [
+  {
+    id: "market",
+    label: "Market",
+    items: [
+      { href: "/", id: "home", label: "Overview" },
+      { href: "/markets", id: "markets", label: "Markets" },
+      { href: "/opportunities", id: "opportunities", label: "Opportunities" },
+      { href: "/portfolio", id: "portfolio", label: "Portfolio" },
+      { href: "/activity", id: "activity", label: "Activity" },
+    ],
+  },
+  {
+    id: "automation",
+    label: "Automation",
+    items: [
+      { href: "/strategies", id: "strategies", label: "Strategies" },
+      { href: "/agents", id: "agents", label: "Agents" },
+    ],
+  },
+  {
+    id: "system",
+    label: "System",
+    items: [{ href: "/developer", id: "developer", label: "Developer" }],
+  },
+  {
+    id: "desk",
+    label: "Desk",
+    items: [
+      { href: "/desk", id: "trade", label: "Trade" },
+      { href: "/jobs", id: "jobs", label: "Jobs" },
+      { href: "/wallet", id: "wallet", label: "Wallet" },
+    ],
+  },
+] as const;
+
+export const NAV: Array<{ href: string; id: string; label: string }> = NAV_GROUPS.flatMap((group) => [...group.items]);
+
+export const MOBILE_PRIMARY = NAV_GROUPS[0].items;
+
+export const MOBILE_MORE = [
+  ...NAV_GROUPS[1].items,
+  ...NAV_GROUPS[2].items,
+  ...NAV_GROUPS[3].items,
+  { href: "/replay", id: "replay", label: "Replay" },
 ] as const;
 
 export function hrefForView(view: DeskView): string {
