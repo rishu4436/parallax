@@ -113,6 +113,7 @@ interface ParallaxState {
   notices: Notice[];
   paletteOpen: boolean;
   copilotOpen: boolean;
+  pendingCopilot: string | null;
   demo: DemoScenario | null;
   wallet?: `0x${string}`;
   connectNonce: number;
@@ -122,6 +123,7 @@ interface ParallaxState {
   setSettingsOpen: (open: boolean) => void;
   setPaletteOpen: (open: boolean) => void;
   setCopilotOpen: (open: boolean) => void;
+  queueCopilot: (text: string) => void;
   notify: (text: string, kind?: Notice["kind"], demo?: boolean) => void;
   dismissNotice: (id: string) => void;
   setView: (view: "trade" | "jobs" | "wallet") => void;
@@ -202,10 +204,12 @@ export const useParallax = create<ParallaxState>((set, get) => ({
   notices: [],
   paletteOpen: false,
   copilotOpen: false,
+  pendingCopilot: null,
   demo: null,
   connectNonce: 0,
   setPaletteOpen: (open) => set({ paletteOpen: open }),
   setCopilotOpen: (open) => set({ copilotOpen: open }),
+  queueCopilot: (text) => set({ pendingCopilot: text, copilotOpen: true }),
   notify: (text, kind = "info", demo) => {
     const prev = get().notices[0];
     if (prev && prev.text === text && Date.now() - prev.at < 8_000) return;

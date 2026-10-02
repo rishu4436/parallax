@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParallax } from "@/lib/store";
 import { useGo } from "@/lib/use-go";
 import type { Rail, Side } from "@parallax/core";
@@ -18,12 +18,20 @@ export function Copilot() {
   const setUsdt = useParallax((s) => s.setUsdt);
   const setAnalyzeOpen = useParallax((s) => s.setAnalyzeOpen);
   const openConfirm = useParallax((s) => s.openConfirm);
+  const pendingCopilot = useParallax((s) => s.pendingCopilot);
   const go = useGo();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     { role: "desk", text: "Ask the live book. Prices come from quotes on this desk, not from a model." },
   ]);
+
+  useEffect(() => {
+    if (!pendingCopilot) return;
+    const text = pendingCopilot;
+    useParallax.setState({ pendingCopilot: null });
+    void ask(text);
+  }, [pendingCopilot]);
 
   async function ask(raw = text) {
     const q = raw.trim();

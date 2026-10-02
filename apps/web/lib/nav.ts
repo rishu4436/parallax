@@ -3,9 +3,10 @@ export type DeskView = "trade" | "jobs" | "wallet";
 export const NAV = [
   { href: "/", id: "home", label: "Overview", kicker: "01" },
   { href: "/markets", id: "markets", label: "Markets", kicker: "02" },
-  { href: "/desk", id: "trade", label: "Trade", kicker: "03" },
-  { href: "/jobs", id: "jobs", label: "Jobs", kicker: "04" },
-  { href: "/wallet", id: "wallet", label: "Wallet", kicker: "05" },
+  { href: "/opportunities", id: "opportunities", label: "Opportunities", kicker: "03" },
+  { href: "/desk", id: "trade", label: "Trade", kicker: "04" },
+  { href: "/jobs", id: "jobs", label: "Jobs", kicker: "05" },
+  { href: "/wallet", id: "wallet", label: "Wallet", kicker: "06" },
 ] as const;
 
 export function hrefForView(view: DeskView): string {

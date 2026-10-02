@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 const STATIC = [
   { label: "Overview", run: "/" },
   { label: "Markets", run: "/markets" },
+  { label: "Opportunities", run: "/opportunities" },
   { label: "Trade", run: "trade" },
   { label: "Jobs", run: "jobs" },
   { label: "Wallet", run: "wallet" },
