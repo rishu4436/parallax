@@ -19,13 +19,17 @@ export function PortfolioDock() {
   const mids = new Map(books.filter((book) => book.best?.ok).map((book) => [book.wrapper.symbol, book.best!.perShare]));
   const held = (portfolio?.lines ?? []).filter((line) => line.rail && line.amount > 0);
   const stables = (portfolio?.lines ?? []).filter((line) => !line.rail && line.amount > 0);
-  const total = held.reduce((sum, line) => sum + line.amount * (mids.get(line.symbol) || 0), 0);
+  const priced = held.filter((line) => {
+    const px = mids.get(line.symbol);
+    return px != null && px > 0;
+  });
+  const total = held.length > 0 && priced.length === held.length ? held.reduce((sum, line) => sum + line.amount * (mids.get(line.symbol) as number), 0) : null;
 
   return (
     <section id="portfolio">
       <div className="flex items-baseline justify-between">
         <h2 className="kicker">Portfolio</h2>
-        <p className="display num text-3xl">{held.length ? formatUsd(total) : "—"}</p>
+        <p className="display num text-3xl">{total == null ? "—" : formatUsd(total)}</p>
       </div>
       {mounted && !isConnected ? <p className="mt-3 text-sm text-dim">{COPY.connect}</p> : null}
       {mounted && isConnected && held.length === 0 ? <p className="mt-3 text-sm text-dim">No wrappers in this wallet.</p> : null}

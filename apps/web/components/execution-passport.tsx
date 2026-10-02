@@ -36,8 +36,9 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function ExecutionPassportPanel() {
-  const passport = useParallax((s) => s.passport);
+export function ExecutionPassportPanel({ passport: given }: { passport?: ExecutionPassport | null } = {}) {
+  const stored = useParallax((s) => s.passport);
+  const passport = given === undefined ? stored : given;
   const quoting = useParallax((s) => s.quoting);
   const demo = useParallax((s) => s.demo);
 
